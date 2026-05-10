@@ -13,7 +13,6 @@ from src.data.models import ValuationCase, ComparableTicker
 def render() -> None:
     st.title("🏠 非上場会社向けオプション評価システム")
 
-
     try:
         with get_session() as session:
             # 評価ケース総数
@@ -62,11 +61,11 @@ def render() -> None:
     c1, c2 = st.columns(2)
     with c1:
         if st.button("📊 新規評価を開始", use_container_width=True, type="primary"):
-            st.session_state["current_page"] = "📈 新規評価"
+            st.session_state["current_page"] = "📊 新規評価"    # ✅ app.pyと一致
             st.rerun()
     with c2:
         if st.button("📋 評価一覧を見る", use_container_width=True):
-            st.session_state["current_page"] = "📋 評価一覧"
+            st.session_state["current_page"] = "📋 ケース一覧"  # ✅ app.pyと一致
             st.rerun()
 
     st.divider()
@@ -88,6 +87,6 @@ def render() -> None:
             )
             with col_c:
                 if st.button("詳細", key=f"home_detail_{item['id']}"):
-                    st.session_state["current_page"] = "📋 評価一覧"
+                    st.session_state["current_page"] = "📋 ケース一覧"  # ✅ 修正
                     st.session_state["selected_case_id"] = item["id"]
-                    st.rerun()
+                    st.rerun()                                           # ✅ 追加

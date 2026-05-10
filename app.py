@@ -2,23 +2,16 @@
 app.py - メインエントリポイント v0.3.3
 """
 import streamlit as st
-from pathlib import Path
 
 st.set_page_config(
-    page_title="非上場企業向けオプション評価システム",
-    page_icon="📈",
+    page_title="オプション評価システム",
+    page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# ─── パスワード認証 ───────────────────────────────────────
-from src.ui.auth import check_password
-
-if not check_password():
-    st.stop()
-
-# ─── DB初期化 ────────────────────────────────────────────
 from src.data.database import get_db_manager
+
 
 @st.cache_resource
 def _init_db():
@@ -26,24 +19,27 @@ def _init_db():
     db.create_tables()
     return db
 
+
 _init_db()
 
 from src.ui.pages import home, new_valuation, case_list
 
 PAGES = {
-    "🏠 ホーム":   home,
-    "📈 新規評価": new_valuation,
-    "📋 評価一覧": case_list,
-    "⚙️ 設定":     None,
+    "🏠 ホーム":     home,
+    "📊 新規評価":   new_valuation,
+    "📋 ケース一覧": case_list,
+    "⚙️ 設定":       None,
 }
 
 PAGE_KEYS = list(PAGES.keys())
 
+# 初期化
 if "current_page" not in st.session_state:
-    st.session_state["current_page"] = PAGE_KEYS[0]
+    st.session_state["current_page"] = "🏠 ホーム"
 
+# current_pageが不正な値なら初期化
 if st.session_state["current_page"] not in PAGES:
-    st.session_state["current_page"] = PAGE_KEYS[0]
+    st.session_state["current_page"] = "🏠 ホーム"
 
 _current = st.session_state["current_page"]
 
@@ -54,16 +50,19 @@ except ValueError:
 
 # ─── サイドバー ───────────────────────────────────────
 with st.sidebar:
-
-    # ロゴ画像
-    logo_path = Path(__file__).parent / "assets" / "logo.png"
-    if logo_path.exists():
-        st.image(str(logo_path), width=200)
-        st.divider()
-
+    st.markdown(
+        """
+        <div style="padding:0.5rem 0 1rem;">
+            <h2 style="margin:0;font-size:1.3rem;">📊 オプション評価</h2>
+            <p style="margin:0;font-size:0.78rem;color:#888;">
+                非上場企業向け公正価値算定システム
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     st.divider()
 
-    # ナビゲーション
     sel = st.radio(
         "メニュー",
         PAGE_KEYS,
@@ -71,6 +70,7 @@ with st.sidebar:
         label_visibility="collapsed",
     )
 
+    # サイドバー操作時のみ更新（ボタン遷移を上書きしない）
     if sel != _current:
         st.session_state["current_page"] = sel
         st.session_state.pop("detail_case_id", None)
@@ -79,16 +79,14 @@ with st.sidebar:
 
     st.divider()
     st.caption("v0.3.3 | Python 3.12")
-    st.caption("© 2026 KAZAMA CPA OFFICE/Marleight.LLC")
-    st.caption("All Rights Reserved.")
 
 # ─── ページ描画 ───────────────────────────────────────
 page_module = PAGES[st.session_state["current_page"]]
 
 if page_module is None:
     st.title(st.session_state["current_page"])
-    st.info("🚧 このページは準備中です。")
+    st.info("🚧 このページは準備中です")
 elif hasattr(page_module, "render"):
     page_module.render()
 else:
-    st.error("ページモジュールに render() が見つかりません。")
+    st.error("ページモジュールに render() が見つかりません")
