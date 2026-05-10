@@ -62,7 +62,7 @@ def render() -> None:
     c1, c2 = st.columns(2)
     with c1:
         if st.button("📊 新規評価を開始", use_container_width=True, type="primary"):
-            st.session_state["current_page"] = "📊 新規評価"
+            st.session_state["current_page"] = "📈 新規評価"
             st.rerun()
     with c2:
         if st.button("📋 評価一覧を見る", use_container_width=True):
