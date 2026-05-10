@@ -11,6 +11,13 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# ─── パスワード認証 ───────────────────────────────────────
+from src.ui.auth import check_password
+
+if not check_password():
+    st.stop()
+
+# ─── DB初期化 ────────────────────────────────────────────
 from src.data.database import get_db_manager
 
 @st.cache_resource
@@ -53,7 +60,6 @@ with st.sidebar:
     if logo_path.exists():
         st.image(str(logo_path), width=200)
         st.divider()
-
 
     st.divider()
 
