@@ -2,6 +2,7 @@
 app.py - メインエントリポイント v0.3.3
 """
 import streamlit as st
+from pathlib import Path
 
 st.set_page_config(
     page_title="オプション評価システム",
@@ -11,6 +12,7 @@ st.set_page_config(
 )
 
 from src.data.database import get_db_manager
+from src.ui.auth import check_password
 
 
 @st.cache_resource
@@ -22,34 +24,35 @@ def _init_db():
 
 _init_db()
 
+# ─── 認証チェック ─────────────────────────────────────
+if not check_password():
+    st.stop()
+
+# ─── ページ定義 ───────────────────────────────────────
 from src.ui.pages import home, new_valuation, case_list
 
 PAGES = {
-    "🏠 ホーム":     home,
-    "📊 新規評価":   new_valuation,
-    "📋 ケース一覧": case_list,
-    "⚙️ 設定":       None,
+    "🏠 ホーム":      home,
+    "📊 新規評価":    new_valuation,
+    "📋 ケース一覧":  case_list,
+    "⚙️ 設定":        None,
 }
 
 PAGE_KEYS = list(PAGES.keys())
 
-# 初期化
+# ─── session_state 初期化 ────────────────────────────
 if "current_page" not in st.session_state:
     st.session_state["current_page"] = "🏠 ホーム"
 
-# current_pageが不正な値なら初期化
 if st.session_state["current_page"] not in PAGES:
     st.session_state["current_page"] = "🏠 ホーム"
 
-_current = st.session_state["current_page"]
-
-try:
-    _radio_index = PAGE_KEYS.index(_current)
-except ValueError:
-    _radio_index = 0
-
 # ─── サイドバー ───────────────────────────────────────
 with st.sidebar:
+    logo_path = Path("assets/logo.png")
+    if logo_path.exists():
+        st.image(str(logo_path), use_column_width=True)
+
     st.markdown(
         """
         <div style="padding:0.5rem 0 1rem;">
@@ -61,17 +64,25 @@ with st.sidebar:
         """,
         unsafe_allow_html=True,
     )
+    st.caption("風間会計事務所")
     st.divider()
+
+    # ラジオの index を current_page に合わせる
+    try:
+        radio_index = PAGE_KEYS.index(st.session_state["current_page"])
+    except ValueError:
+        radio_index = 0
 
     sel = st.radio(
         "メニュー",
         PAGE_KEYS,
-        index=_radio_index,
+        index=radio_index,
+        key="nav_radio",
         label_visibility="collapsed",
     )
 
-    # サイドバー操作時のみ更新（ボタン遷移を上書きしない）
-    if sel != _current:
+    # ラジオ操作による遷移（ボタン遷移と競合しないよう条件を修正）
+    if sel != st.session_state["current_page"]:
         st.session_state["current_page"] = sel
         st.session_state.pop("detail_case_id", None)
         st.session_state.pop("selected_case_id", None)
@@ -79,6 +90,7 @@ with st.sidebar:
 
     st.divider()
     st.caption("v0.3.3 | Python 3.12")
+    st.caption("© 風間会計事務所 All rights reserved.")
 
 # ─── ページ描画 ───────────────────────────────────────
 page_module = PAGES[st.session_state["current_page"]]
@@ -90,3 +102,4 @@ elif hasattr(page_module, "render"):
     page_module.render()
 else:
     st.error("ページモジュールに render() が見つかりません")
+
