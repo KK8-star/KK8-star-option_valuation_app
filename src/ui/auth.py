@@ -22,9 +22,12 @@ def check_password():
 
     # サイドバーにロゴ表示
     with st.sidebar:
-        logo_path = Path(__file__).parent.parent.parent / "assets" / "logo.png"
-        if logo_path.exists():
-            st.image(str(logo_path), use_container_width=True)
+        try:
+            logo_path = Path(__file__).parent.parent.parent / "assets" / "logo.png"
+            if logo_path.exists():
+                st.image(str(logo_path), use_container_width=True)
+        except Exception:
+            pass
         st.markdown(
             '<div style="padding:0.5rem 0 1rem;">'
             '<h2 style="margin:0;font-size:1.3rem;">&#128202; オプション評価</h2>'
@@ -40,11 +43,14 @@ def check_password():
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.markdown("<br><br>", unsafe_allow_html=True)
-        logo_path = Path(__file__).parent.parent.parent / "assets" / "logo.png"
-        if logo_path.exists():
-            col_l, col_c, col_r = st.columns([1, 1, 1])
-            with col_c:
-                st.image(str(logo_path), use_container_width=True)
+        try:
+            logo_path = Path(__file__).parent.parent.parent / "assets" / "logo.png"
+            if logo_path.exists():
+                col_l, col_c, col_r = st.columns([1, 1, 1])
+                with col_c:
+                    st.image(str(logo_path), use_container_width=True)
+        except Exception:
+            pass
         st.markdown(
             "<h2 style='text-align:center;'>&#128274; ログイン</h2>",
             unsafe_allow_html=True
