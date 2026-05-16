@@ -143,13 +143,15 @@ def _show_calc_process(case: dict):
         mean_val = final_prices.mean()
         std_val  = final_prices.std()
 
-        # ラベルY座標：近い場合は上下に分離
-        label_gap = yrange * 0.15  # ラベル間の最低垂直距離
-        mean_y   = ymax * 0.93
-        strike_y = ymax * 0.93
+        # ラベル配置：近い場合はY座標＋矢印で分離
+        label_gap = yrange * 0.18
+        mean_y   = ymax * 0.92
+        strike_y = ymax * 0.92
+        xrange   = ax1.get_xlim()[1] - ax1.get_xlim()[0]
 
-        if abs(mean_val - K) < std_val * 0.5:
-            # MeanとStrikeが近い → MeanStrike の大小で上下を決める
+        close = abs(mean_val - K) < std_val * 0.6
+
+        if close:
             if mean_val >= K:
                 mean_y   = ymax * 0.93
                 strike_y = ymax * 0.93 - label_gap
@@ -157,10 +159,25 @@ def _show_calc_process(case: dict):
                 strike_y = ymax * 0.93
                 mean_y   = ymax * 0.93 - label_gap
 
-        ax1.text(mean_val, mean_y,   f"Mean: {mean_val:,.0f}",   color="green", ha="center", va="top", fontsize=8, fontweight="bold",
-                 bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.8))
-        ax1.text(K,        strike_y, f"Strike: {K:,.0f}",        color="red",   ha="center", va="top", fontsize=8, fontweight="bold",
-                 bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.8))
+        # annotate（矢印付き）で線との対応を明確化
+        ax1.annotate(
+            f"Mean
+{mean_val:,.0f}",
+            xy=(mean_val, ymax * 0.02),
+            xytext=(mean_val - xrange * 0.08 if close else mean_val, mean_y),
+            ha="center", va="top", fontsize=8, fontweight="bold", color="green",
+            bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor="green", alpha=0.9),
+            arrowprops=dict(arrowstyle="->" , color="green", lw=1.2) if close else None,
+        )
+        ax1.annotate(
+            f"Strike
+{K:,.0f}",
+            xy=(K, ymax * 0.02),
+            xytext=(K + xrange * 0.08 if close else K, strike_y),
+            ha="center", va="top", fontsize=8, fontweight="bold", color="red",
+            bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor="red", alpha=0.9),
+            arrowprops=dict(arrowstyle="->", color="red", lw=1.2) if close else None,
+        )
         ax1.grid(axis="y", linestyle="--", alpha=0.4)
         plt.tight_layout()
         st.pyplot(fig1)
