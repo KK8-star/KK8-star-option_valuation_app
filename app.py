@@ -73,7 +73,7 @@ with st.sidebar:
 
     st.divider()
     st.caption("v0.8")
-    st.caption("(C) kazama.cpaoffice & Marleight LLC, All Rights Reserved")
+    st.caption("(C) kazama.cpa office & Marleight LLC, All Rights Reserved")
 
 page_module = PAGES[st.session_state["current_page"]]
 
