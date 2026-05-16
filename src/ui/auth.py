@@ -42,7 +42,7 @@ def check_password():
         st.markdown("<br><br>", unsafe_allow_html=True)
         logo_path = Path("assets/logo.png")
         if logo_path.exists():
-            st.image(str(logo_path), use_column_width=True)
+            st.image(str(logo_path), width=200)
         st.markdown(
             "<h2 style='text-align:center;'>&#128274; ログイン</h2>",
             unsafe_allow_html=True
