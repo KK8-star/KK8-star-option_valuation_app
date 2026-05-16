@@ -1,5 +1,5 @@
 """
-app.py - メインエントリポイント v0.3.3
+app.py - メインエントリポイント v0.8
 """
 import streamlit as st
 from pathlib import Path
@@ -72,8 +72,8 @@ with st.sidebar:
         st.rerun()
 
     st.divider()
-    st.caption("v0.3.3")
-    st.caption("(c) 風間会計事務所")
+    st.caption("v0.8")
+    st.caption("(C) kazama.cpaoffice & Marleight LLC, All Rights Reserved")
 
 page_module = PAGES[st.session_state["current_page"]]
 

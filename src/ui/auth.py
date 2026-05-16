@@ -18,8 +18,8 @@ def check_password():
     with st.sidebar:
         st.markdown("Option Valuation System")
         st.divider()
-        st.caption("(c) Kazama CPA")
-        st.caption("v0.3.3 | Python 3.12")
+        st.caption("(C) kazama.cpaoffice & Marleight LLC, All Rights Reserved")
+        st.caption("v0.8 | Python 3.12")
 
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
