@@ -11,7 +11,7 @@ from src.data.models import ValuationCase, ComparableTicker
 
 
 def render() -> None:
-    st.title("🏠 非上場会社向けオプション評価システム")
+    st.title("🏢 非上場会社向けオプション評価システム")
 
     try:
         with get_session() as session:

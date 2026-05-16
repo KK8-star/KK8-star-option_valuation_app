@@ -32,7 +32,7 @@ if not check_password():
 from src.ui.pages import home, new_valuation, case_list
 
 PAGES = {
-    "🏠 ホーム":      home,
+    "🏢 ホーム":      home,
     "📊 新規評価":    new_valuation,
     "📋 ケース一覧":  case_list,
     "⚙️ 設定":        None,
@@ -42,10 +42,10 @@ PAGE_KEYS = list(PAGES.keys())
 
 # ─── session_state 初期化 ────────────────────────────
 if "current_page" not in st.session_state:
-    st.session_state["current_page"] = "🏠 ホーム"
+    st.session_state["current_page"] = "🏢 ホーム"
 
 if st.session_state["current_page"] not in PAGES:
-    st.session_state["current_page"] = "🏠 ホーム"
+    st.session_state["current_page"] = "🏢 ホーム"
 
 # ─── サイドバー ───────────────────────────────────────
 with st.sidebar:
