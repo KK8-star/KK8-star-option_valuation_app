@@ -46,6 +46,9 @@ class ValuationResult:
     theta:          float
     vega:           float
     rho:            float
+    bs_detail:      dict = field(default_factory=dict)
+    bin_detail:     dict = field(default_factory=dict)
+    mc_detail:      dict = field(default_factory=dict)
 
 # ── Black-Scholes ───────────────────────────────────────────────
 def _bs(p: ValuationParams) -> tuple[float, dict]:
@@ -114,20 +117,23 @@ def _ticker_to_dict(t: ComparableTicker) -> dict:
 class ValuationService:
 
     def calculate(self, p: ValuationParams) -> ValuationResult:
-        bs_price, greeks = _bs(p)
-        bin_price        = _binomial(p)
-        mc_price         = _mc(p)
-        weighted         = 0.5*bs_price + 0.3*bin_price + 0.2*mc_price
+        bs_price,  bs_detail  = _bs(p)
+        bin_price, bin_detail = _binomial(p)
+        mc_price,  mc_detail  = _mc(p)
+        weighted = 0.5*bs_price + 0.3*bin_price + 0.2*mc_price
         return ValuationResult(
             bs_price       = bs_price,
             binomial_price = bin_price,
             mc_price       = mc_price,
             weighted_price = weighted,
-            delta          = greeks.get("delta", 0.0),
-            gamma          = greeks.get("gamma", 0.0),
-            theta          = greeks.get("theta", 0.0),
-            vega           = greeks.get("vega",  0.0),
-            rho            = greeks.get("rho",   0.0),
+            delta          = bs_detail.get("delta", 0.0),
+            gamma          = bs_detail.get("gamma", 0.0),
+            theta          = bs_detail.get("theta", 0.0),
+            vega           = bs_detail.get("vega",  0.0),
+            rho            = bs_detail.get("rho",   0.0),
+            bs_detail      = bs_detail,
+            bin_detail     = bin_detail,
+            mc_detail      = mc_detail,
         )
 
     def save(self, p: ValuationParams, r: ValuationResult,

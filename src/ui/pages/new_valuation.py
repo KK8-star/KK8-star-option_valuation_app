@@ -3,6 +3,7 @@ from __future__ import annotations
 import streamlit as st
 import numpy as np
 import pandas as pd
+from src.ui.components.result_display import render_calculation_detail
 from src.services.valuation_service import (
     ValuationService,
     ValuationParams,
@@ -130,6 +131,7 @@ def render() -> None:
         g3.metric("Theta", f"{result.theta:.4f}")
         g4.metric("Vega",  f"{result.vega:.4f}")
         g5.metric("Rho",   f"{result.rho:.4f}")
+        render_calculation_detail(params, result)
 
         # comparable_rows をリセット
         st.session_state.pop("comparable_rows", None)
