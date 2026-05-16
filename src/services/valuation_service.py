@@ -73,12 +73,12 @@ def _bs(p: ValuationParams) -> tuple[float, dict]:
     return price, dict(delta=delta, gamma=gamma, theta=theta, vega=vega, rho=rho)
 
 # ── 二項モデル ──────────────────────────────────────────────────
-def _binomial(p: ValuationParams) -> float:
+def _binomial(p: ValuationParams) -> tuple:
     S, K, r, σ, T, q, N = (p.stock_price, p.strike_price, p.risk_free_rate,
                              p.volatility, p.time_to_expiry, p.dividend_yield,
                              p.binomial_steps)
     if T <= 0 or σ <= 0:
-        return 0.0
+        return 0.0, {}
     dt = T / N
     u  = math.exp(σ * math.sqrt(dt))
     d  = 1 / u
@@ -89,19 +89,35 @@ def _binomial(p: ValuationParams) -> float:
     vals   = np.maximum(prices - K, 0) if p.option_type=="call" else np.maximum(K - prices, 0)
     for _ in range(N):
         vals = disc * (pu * vals[1:] + pd * vals[:-1])
-    return float(vals[0])
+    detail = dict(u=u, d=d, p_up=pu, p_down=pd, dt=dt, steps=N, disc=disc)
+    return float(vals[0]), detail
 
 # ── モンテカルロ ────────────────────────────────────────────────
-def _mc(p: ValuationParams) -> float:
+def _mc(p: ValuationParams) -> tuple:
     S, K, r, σ, T, q = (p.stock_price, p.strike_price, p.risk_free_rate,
                          p.volatility, p.time_to_expiry, p.dividend_yield)
     if T <= 0 or σ <= 0:
-        return 0.0
+        return 0.0, {}
     rng = np.random.default_rng(42)
     Z   = rng.standard_normal(p.mc_simulations)
     ST  = S * np.exp((r - q - 0.5*σ**2)*T + σ*math.sqrt(T)*Z)
     payoff = np.maximum(ST - K, 0) if p.option_type=="call" else np.maximum(K - ST, 0)
-    return float(np.exp(-r*T) * payoff.mean())
+    price  = float(np.exp(-r*T) * payoff.mean())
+    mean_p = float(payoff.mean())
+    std_p  = float(payoff.std())
+    se     = float(std_p / math.sqrt(p.mc_simulations))
+    ci_lo  = float(np.exp(-r*T) * (mean_p - 1.96*se))
+    ci_hi  = float(np.exp(-r*T) * (mean_p + 1.96*se))
+    detail = dict(
+        simulations=p.mc_simulations,
+        mean=mean_p,
+        std=std_p,
+        se=se,
+        ci_low=ci_lo,
+        ci_high=ci_hi,
+        payoffs=payoff,
+    )
+    return price, detail
 
 # ── データ転写ヘルパー ──────────────────────────────────────────
 def _case_to_dict(case: ValuationCase) -> dict:
