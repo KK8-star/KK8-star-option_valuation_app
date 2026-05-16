@@ -246,7 +246,7 @@ def _show_edit(case: dict, case_id: int, edit_key: str):
         period = st.selectbox("Period", ["1y", "2y", "5y"], key="vol_period")
         if st.button("Fetch", key="fetch_btn"):
             if ticker_input.strip():
-                with st.spinner(f"{ticker_input} - Fetching data...")
+                with st.spinner(f"{ticker_input} - Fetching data..."):
                     row = _fetch_vol(ticker_input.strip(), period)
                 if row.fetch_ok:
                     st.success(f"{row.company_label}: σ = {row.volatility*100:.2f}%")
