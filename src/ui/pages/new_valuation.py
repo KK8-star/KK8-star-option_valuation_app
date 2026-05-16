@@ -131,7 +131,7 @@ def render() -> None:
         g3.metric("Theta", f"{result.theta:.4f}")
         g4.metric("Vega",  f"{result.vega:.4f}")
         g5.metric("Rho",   f"{result.rho:.4f}")
-        render_calculation_detail(params, result)
+        render_calculation_detail(vars(params), result)
 
         # comparable_rows をリセット
         st.session_state.pop("comparable_rows", None)
