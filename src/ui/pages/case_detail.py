@@ -46,11 +46,11 @@ def _show_calc_process(case: dict):
     )
 
     with tab1:
-        st.markdown("#### Black-Scholes Model - Calculation Process")
+        st.markdown("#### ブラック・ショールズモデル - 計算プロセス")
         d1 = (math.log(S / K) + (r - q + 0.5 * v**2) * T) / (v * math.sqrt(T))
         d2 = d1 - v * math.sqrt(T)
 
-        st.markdown("**Input Parameters**")
+        st.markdown("**入力パラメータ**")
         c1, c2, c3, c4, c5 = st.columns(5)
         c1.metric("S (Stock Price)", f"{S:,.2f}")
         c2.metric("K (Strike)", f"{K:,.2f}")
@@ -58,30 +58,30 @@ def _show_calc_process(case: dict):
         c4.metric("sigma (Volatility)", f"{v*100:.2f}%")
         c5.metric("T (Years to Expiry)", f"{T:.4f} yr")
 
-        st.markdown("**d1, d2 Calculation**")
+        st.markdown("**d1, d2 の計算**")
         st.latex(r"d_1 = \frac{\ln(S/K) + (r - q + \frac{\sigma^2}{2})T}{\sigma\sqrt{T}}")
         st.code(
             f"d1 = {d1:.6f}\nd2 = {d2:.6f}",
             language="text"
         )
 
-        st.markdown("**Normal Distribution Values and Price**")
+        st.markdown("**正規分布値とオプション価格**")
         if opt == "call":
             price_bs = S * math.exp(-q*T) * norm.cdf(d1) - K * math.exp(-r*T) * norm.cdf(d2)
             st.latex(r"C = S e^{-qT} N(d_1) - K e^{-rT} N(d_2)")
         else:
             price_bs = K * math.exp(-r*T) * norm.cdf(-d2) - S * math.exp(-q*T) * norm.cdf(-d1)
             st.latex(r"P = K e^{-rT} N(-d_2) - S e^{-qT} N(-d_1)")
-        st.success(f"Black-Scholes Price: {price_bs:,.4f}")
+        st.success(f"ブラック・ショールズ価格: {price_bs:,.4f} 円")
 
     with tab2:
-        st.markdown("#### Binomial Model（Cox-Ross-Rubinstein）")
+        st.markdown("#### 二項モデル（Cox-Ross-Rubinstein）")
         dt = T / N
         u  = math.exp(v * math.sqrt(dt))
         d  = 1 / u
         p  = (math.exp((r - q) * dt) - d) / (u - d)
 
-        st.markdown("**Model Parameters**")
+        st.markdown("**モデルパラメータ**")
         p1, p2, p3, p4, p5 = st.columns(5)
         p1.metric("Steps N", N)
         p2.metric("Delta_t", f"{dt:.6f} yr")
@@ -89,7 +89,7 @@ def _show_calc_process(case: dict):
         p4.metric("d (Down Factor)", f"{d:.6f}")
         p5.metric("p (Risk-Neutral Prob)", f"{p:.6f}")
 
-        st.markdown("**Price Tree (First 5 Steps)**")
+        st.markdown("**価格ツリー（最初の5ステップ）**")
         steps_show = min(5, N)
         tree_data = {}
         for step in range(steps_show + 1):
@@ -99,15 +99,15 @@ def _show_calc_process(case: dict):
         st.metric("Binomial Model Price", f"¥{float(case['binomial_price']):,.4f}")
 
     with tab3:
-        st.markdown("#### Monte Carlo Simulation")
+        st.markdown("#### モンテカルロ・シミュレーション")
         st.latex(r"S_T = S_0 \exp\left[\left(r - q - \frac{\sigma^2}{2}\right)T + \sigma\sqrt{T}\,Z\right]")
         if opt == "call":
             st.latex(r"\text{Payoff} = \max(S_T - K,\ 0)")
         else:
             st.latex(r"\text{Payoff} = \max(K - S_T,\ 0)")
         st.latex(r"\text{Price} = e^{-rT} \times \mathbb{E}[\text{Payoff}]")
-        st.success(f"Monte Carlo Price: ¥{float(case['mc_price']):,.4f}  ({M:,} simulations)")
-        st.info(f"Std Error approx sigma_payoff / sqrt(M)  Simulations: {M:,}")
+        st.success(f"モンテカルロ価格: ¥{float(case['mc_price']):,.4f}  （シミュレーション回数: {M:,}）")
+        st.info(f"標準誤差の近似: sigma_payoff / sqrt(M)　シミュレーション回数: {M:,}")
 
         import matplotlib
         matplotlib.use("Agg")
@@ -137,9 +137,15 @@ def _show_calc_process(case: dict):
         ax1.set_ylabel("Probability Density")
         ax1.set_title("Stock Price Distribution at Maturity")
         ax1.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x:,.0f}"))
-        ymax = ax1.get_ylim()[1]
-        ax1.text(final_prices.mean(), ymax * 0.92, f"Mean\n{final_prices.mean():,.0f}", color="green", ha="center", va="top", fontsize=8)
-        ax1.text(K, ymax * 0.78, f"Strike\n{K:,.0f}", color="red", ha="center", va="top", fontsize=8)
+        ax1.figure.canvas.draw()
+        ymin, ymax = ax1.get_ylim()
+        yrange = ymax - ymin
+        mean_val = final_prices.mean()
+        offset = yrange * 0.08 if abs(mean_val - K) < (final_prices.std() * 0.5) else 0
+        ax1.text(mean_val, ymax * 0.95, f"Mean: {mean_val:,.0f}", color="green", ha="center", va="top", fontsize=8, fontweight="bold",
+                 bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.7))
+        ax1.text(K, ymax * 0.95 - offset - yrange * 0.12, f"Strike: {K:,.0f}", color="red", ha="center", va="top", fontsize=8, fontweight="bold",
+                 bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.7))
         ax1.grid(axis="y", linestyle="--", alpha=0.4)
         plt.tight_layout()
         st.pyplot(fig1)
@@ -237,7 +243,7 @@ def _show_edit(case: dict, case_id: int, edit_key: str):
         )
         with st.spinner("Re-evaluating..."):
             svc.update_case(case_id, params)
-        st.success("Update and re-evaluation complete")
+        st.success("更新・再評価が完了しました")
         st.session_state[edit_key] = False
         st.rerun()
 
@@ -259,7 +265,7 @@ def _show_edit(case: dict, case_id: int, edit_key: str):
 def show(case_id: int):
     case = svc.get_case(case_id)
     if case is None:
-        st.error("Case not found")
+        st.error("ケースが見つかりません")
         return
 
     edit_key = f"edit_mode_{case_id}"
