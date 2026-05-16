@@ -1,4 +1,4 @@
-﻿import streamlit as st
+import streamlit as st
 import hmac
 from pathlib import Path
 
@@ -24,7 +24,7 @@ def check_password():
     with st.sidebar:
         logo_path = Path("assets/logo.png")
         if logo_path.exists():
-            st.image(str(logo_path), use_column_width=True)
+            st.image(str(logo_path), use_container_width=True)
         st.markdown(
             '<div style="padding:0.5rem 0 1rem;">'
             '<h2 style="margin:0;font-size:1.3rem;">&#128202; オプション評価</h2>'
@@ -44,7 +44,7 @@ def check_password():
         if logo_path.exists():
             col_l, col_c, col_r = st.columns([1, 1, 1])
             with col_c:
-                st.image(str(logo_path), use_column_width=True)
+                st.image(str(logo_path), use_container_width=True)
         st.markdown(
             "<h2 style='text-align:center;'>&#128274; ログイン</h2>",
             unsafe_allow_html=True

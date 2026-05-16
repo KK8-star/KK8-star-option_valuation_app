@@ -11,7 +11,6 @@ from src.data.database import get_session
 
 logger = logging.getLogger(__name__)
 
-# ── パラメータ DTO ──────────────────────────────────────────────
 @dataclass
 class ValuationParams:
     case_name:        str
@@ -34,7 +33,6 @@ class ComparableTickerRow:
     fetch_ok:      bool  = True
     error_msg:     str   = ""
 
-# ── 計算結果 DTO ────────────────────────────────────────────────
 @dataclass
 class ValuationResult:
     bs_price:       float
@@ -50,93 +48,142 @@ class ValuationResult:
     bin_detail:     dict = field(default_factory=dict)
     mc_detail:      dict = field(default_factory=dict)
 
-# ── Black-Scholes ───────────────────────────────────────────────
 def _bs(p: ValuationParams) -> tuple[float, dict]:
-    S, K, r, σ, T, q = (p.stock_price, p.strike_price, p.risk_free_rate,
-                         p.volatility, p.time_to_expiry, p.dividend_yield)
-    if T <= 0 or σ <= 0:
+    S, K, r, sigma, T, q = (p.stock_price, p.strike_price, p.risk_free_rate,
+                              p.volatility, p.time_to_expiry, p.dividend_yield)
+    if T <= 0 or sigma <= 0:
         return 0.0, {}
-    d1 = (math.log(S / K) + (r - q + 0.5 * σ**2) * T) / (σ * math.sqrt(T))
-    d2 = d1 - σ * math.sqrt(T)
+    log_SK    = math.log(S / K)
+    sig_sqrtT = sigma * math.sqrt(T)
+    d1 = (log_SK + (r - q + 0.5 * sigma**2) * T) / sig_sqrtT
+    d2 = d1 - sig_sqrtT
+    exp_qT = math.exp(-q * T)
+    exp_rT = math.exp(-r * T)
+    Nd1  = norm.cdf(d1);  Nd2  = norm.cdf(d2)
+    Nnd1 = norm.cdf(-d1); Nnd2 = norm.cdf(-d2)
+    nd1  = norm.pdf(d1)
     if p.option_type == "call":
-        price = S * math.exp(-q*T)*norm.cdf(d1) - K*math.exp(-r*T)*norm.cdf(d2)
-        delta = math.exp(-q*T) * norm.cdf(d1)
-        rho   = K * T * math.exp(-r*T) * norm.cdf(d2) / 100
+        price = S * exp_qT * Nd1 - K * exp_rT * Nd2
+        delta = exp_qT * Nd1
+        rho   = K * T * exp_rT * Nd2 / 100
     else:
-        price = K*math.exp(-r*T)*norm.cdf(-d2) - S*math.exp(-q*T)*norm.cdf(-d1)
-        delta = -math.exp(-q*T) * norm.cdf(-d1)
-        rho   = -K * T * math.exp(-r*T) * norm.cdf(-d2) / 100
-    gamma = math.exp(-q*T)*norm.pdf(d1) / (S * σ * math.sqrt(T))
-    theta = (-(S*math.exp(-q*T)*norm.pdf(d1)*σ)/(2*math.sqrt(T))
-             - r*K*math.exp(-r*T)*norm.cdf(d2 if p.option_type=="call" else -d2)) / 365
-    vega  = S * math.exp(-q*T) * norm.pdf(d1) * math.sqrt(T) / 100
-    return price, dict(delta=delta, gamma=gamma, theta=theta, vega=vega, rho=rho)
-
-# ── 二項モデル ──────────────────────────────────────────────────
-def _binomial(p: ValuationParams) -> tuple:
-    S, K, r, σ, T, q, N = (p.stock_price, p.strike_price, p.risk_free_rate,
-                             p.volatility, p.time_to_expiry, p.dividend_yield,
-                             p.binomial_steps)
-    if T <= 0 or σ <= 0:
-        return 0.0, {}
-    dt = T / N
-    u  = math.exp(σ * math.sqrt(dt))
-    d  = 1 / u
-    pu = (math.exp((r - q) * dt) - d) / (u - d)
-    pd = 1 - pu
-    disc = math.exp(-r * dt)
-    prices = np.array([S * u**j * d**(N-j) for j in range(N+1)])
-    vals   = np.maximum(prices - K, 0) if p.option_type=="call" else np.maximum(K - prices, 0)
-    for _ in range(N):
-        vals = disc * (pu * vals[1:] + pd * vals[:-1])
-    detail = dict(u=u, d=d, p_up=pu, p_down=pd, dt=dt, steps=N, disc=disc)
-    return float(vals[0]), detail
-
-# ── モンテカルロ ────────────────────────────────────────────────
-def _mc(p: ValuationParams) -> tuple:
-    S, K, r, σ, T, q = (p.stock_price, p.strike_price, p.risk_free_rate,
-                         p.volatility, p.time_to_expiry, p.dividend_yield)
-    if T <= 0 or σ <= 0:
-        return 0.0, {}
-    rng = np.random.default_rng(42)
-    Z   = rng.standard_normal(p.mc_simulations)
-    ST  = S * np.exp((r - q - 0.5*σ**2)*T + σ*math.sqrt(T)*Z)
-    payoff = np.maximum(ST - K, 0) if p.option_type=="call" else np.maximum(K - ST, 0)
-    price  = float(np.exp(-r*T) * payoff.mean())
-    mean_p = float(payoff.mean())
-    std_p  = float(payoff.std())
-    se     = float(std_p / math.sqrt(p.mc_simulations))
-    ci_lo  = float(np.exp(-r*T) * (mean_p - 1.96*se))
-    ci_hi  = float(np.exp(-r*T) * (mean_p + 1.96*se))
+        price = K * exp_rT * Nnd2 - S * exp_qT * Nnd1
+        delta = -exp_qT * Nnd1
+        rho   = -K * T * exp_rT * Nnd2 / 100
+    gamma = exp_qT * nd1 / (S * sig_sqrtT)
+    theta = (-(S * exp_qT * nd1 * sigma) / (2 * math.sqrt(T))
+             - r * K * exp_rT * (Nd2 if p.option_type == "call" else Nnd2)) / 365
+    vega  = S * exp_qT * nd1 * math.sqrt(T) / 100
     detail = dict(
-        simulations=p.mc_simulations,
-        mean=mean_p,
-        std=std_p,
-        se=se,
-        ci_low=ci_lo,
-        ci_high=ci_hi,
-        payoffs=payoff,
+        d1=d1, d2=d2,
+        log_SK=log_SK, sigma_sqrtT=sig_sqrtT,
+        exp_qT=exp_qT, exp_rT=exp_rT,
+        Nd1=Nd1, Nd2=Nd2, Nnd1=Nnd1, Nnd2=Nnd2, nd1=nd1,
+        delta=delta, gamma=gamma, theta=theta, vega=vega, rho=rho,
     )
     return price, detail
 
-# ── データ転写ヘルパー ──────────────────────────────────────────
+def _binomial(p: ValuationParams) -> tuple:
+    S, K, r, sigma, T, q, N = (p.stock_price, p.strike_price, p.risk_free_rate,
+                                 p.volatility, p.time_to_expiry, p.dividend_yield,
+                                 p.binomial_steps)
+    if T <= 0 or sigma <= 0:
+        return 0.0, {}
+    dt   = T / N
+    u    = math.exp(sigma * math.sqrt(dt))
+    d    = 1 / u
+    pu   = (math.exp((r - q) * dt) - d) / (u - d)
+    pd   = 1 - pu
+    disc = math.exp(-r * dt)
+    terminal_prices  = np.array([S * u**j * d**(N - j) for j in range(N + 1)])
+    if p.option_type == "call":
+        terminal_payoffs = np.maximum(terminal_prices - K, 0)
+    else:
+        terminal_payoffs = np.maximum(K - terminal_prices, 0)
+    sample_prices  = []
+    sample_payoffs = []
+    for i in range(min(5, N + 1)):
+        sample_prices.append(float(terminal_prices[i]))
+        sample_payoffs.append(float(terminal_payoffs[i]))
+    if N + 1 > 9:
+        sample_prices.append("...")
+        sample_payoffs.append("...")
+        for i in range(max(5, N - 3), N + 1):
+            sample_prices.append(float(terminal_prices[i]))
+            sample_payoffs.append(float(terminal_payoffs[i]))
+    vals = terminal_payoffs.copy()
+    for _ in range(N):
+        vals = disc * (pu * vals[1:] + pd * vals[:-1])
+    n_itm = int(np.sum(terminal_payoffs > 0))
+    detail = dict(
+        dt=dt, u=u, d=d, p_up=pu, p_down=pd,
+        discount=disc,
+        steps=N,
+        terminal_prices_sample=sample_prices,
+        terminal_payoffs_sample=sample_payoffs,
+        max_terminal_price=float(terminal_prices.max()),
+        min_terminal_price=float(terminal_prices.min()),
+        n_itm=n_itm,
+    )
+    return float(vals[0]), detail
+
+def _mc(p: ValuationParams) -> tuple:
+    S, K, r, sigma, T, q = (p.stock_price, p.strike_price, p.risk_free_rate,
+                              p.volatility, p.time_to_expiry, p.dividend_yield)
+    if T <= 0 or sigma <= 0:
+        return 0.0, {}
+    rng    = np.random.default_rng(42)
+    Z      = rng.standard_normal(p.mc_simulations)
+    ST     = S * np.exp((r - q - 0.5 * sigma**2) * T + sigma * math.sqrt(T) * Z)
+    if p.option_type == "call":
+        payoff = np.maximum(ST - K, 0)
+    else:
+        payoff = np.maximum(K - ST, 0)
+    disc_f = math.exp(-r * T)
+    mean_p = float(payoff.mean())
+    std_p  = float(payoff.std())
+    se     = float(std_p / math.sqrt(p.mc_simulations))
+    price  = disc_f * mean_p
+    ci_lo  = disc_f * (mean_p - 1.96 * se)
+    ci_hi  = disc_f * (mean_p + 1.96 * se)
+    n_itm  = int(np.sum(payoff > 0))
+    rng2   = np.random.default_rng(99)
+    idx    = rng2.choice(len(ST), size=min(2000, len(ST)), replace=False)
+    detail = dict(
+        n_simulations   = p.mc_simulations,
+        mean_ST         = float(ST.mean()),
+        std_ST          = float(ST.std()),
+        min_ST          = float(ST.min()),
+        max_ST          = float(ST.max()),
+        n_itm           = n_itm,
+        itm_ratio       = n_itm / p.mc_simulations,
+        mean_payoff     = mean_p,
+        std_payoff      = std_p,
+        discount_factor = disc_f,
+        std_error       = se,
+        ci95_lower      = ci_lo,
+        ci95_upper      = ci_hi,
+        ST_hist         = ST[idx].tolist(),
+        payoff_hist     = payoff[idx].tolist(),
+        mean=mean_p, std=std_p, se=se,
+        ci_low=ci_lo, ci_high=ci_hi,
+        simulations=p.mc_simulations,
+    )
+    return price, detail
+
 def _case_to_dict(case: ValuationCase) -> dict:
-    """セッション内でカラム値をすべて dict に取り出す"""
-    return {c.key: getattr(case, c.key)
-            for c in case.__mapper__.column_attrs}
+    return {c.key: getattr(case, c.key) for c in case.__mapper__.column_attrs}
 
 def _ticker_to_dict(t: ComparableTicker) -> dict:
-    return {c.key: getattr(t, c.key)
-            for c in t.__mapper__.column_attrs}
+    return {c.key: getattr(t, c.key) for c in t.__mapper__.column_attrs}
 
-# ── メインサービス ──────────────────────────────────────────────
 class ValuationService:
 
     def calculate(self, p: ValuationParams) -> ValuationResult:
         bs_price,  bs_detail  = _bs(p)
         bin_price, bin_detail = _binomial(p)
         mc_price,  mc_detail  = _mc(p)
-        weighted = 0.5*bs_price + 0.3*bin_price + 0.2*mc_price
+        weighted = 0.5 * bs_price + 0.3 * bin_price + 0.2 * mc_price
         return ValuationResult(
             bs_price       = bs_price,
             binomial_price = bin_price,
@@ -177,7 +224,7 @@ class ValuationService:
                 rho             = r.rho,
             )
             sess.add(case)
-            sess.flush()   # id を確定させる
+            sess.flush()
             if comparables:
                 for c in comparables:
                     sess.add(ComparableTicker(
@@ -190,7 +237,7 @@ class ValuationService:
                         error_msg     = c.error_msg,
                     ))
             sess.commit()
-            return case.id   # コミット後なので id は確定済み
+            return case.id
 
     def update(self, case_id: int, p: ValuationParams, r: ValuationResult,
                comparables: list[ComparableTickerRow] | None = None) -> None:
@@ -234,14 +281,12 @@ class ValuationService:
             sess.commit()
 
     def get_all_cases(self) -> list[dict]:
-        """セッションが閉じた後も安全に使えるよう dict のリストで返す"""
         with get_session() as sess:
             cases = sess.query(ValuationCase).order_by(
                 ValuationCase.created_at.desc()).all()
             return [_case_to_dict(c) for c in cases]
 
     def get_case(self, case_id: int) -> Optional[dict]:
-        """dict で返すのでセッション外でも安全"""
         with get_session() as sess:
             case = sess.get(ValuationCase, case_id)
             if case is None:

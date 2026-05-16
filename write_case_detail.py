@@ -1,3 +1,6 @@
+﻿import pathlib
+
+CONTENT = """\
 # src/ui/pages/case_detail.py
 from __future__ import annotations
 import streamlit as st
@@ -42,7 +45,7 @@ def _show_calc_process(case: dict):
     M   = int(case["mc_simulations"])
 
     tab1, tab2, tab3 = st.tabs(
-        ["\U0001f4ca Black-Scholes", "\U0001f333 二項モデル", "\U0001f3b2 モンテカルロ"]
+        ["\\U0001f4ca Black-Scholes", "\\U0001f333 二項モデル", "\\U0001f3b2 モンテカルロ"]
     )
 
     with tab1:
@@ -59,9 +62,9 @@ def _show_calc_process(case: dict):
         c5.metric("T (満期年数)", f"{T:.4f}年")
 
         st.markdown("**d1, d2 の計算**")
-        st.latex(r"d_1 = \frac{\ln(S/K) + (r - q + \frac{\sigma^2}{2})T}{\sigma\sqrt{T}}")
+        st.latex(r"d_1 = \\frac{\\ln(S/K) + (r - q + \\frac{\\sigma^2}{2})T}{\\sigma\\sqrt{T}}")
         st.code(
-            f"d1 = {d1:.6f}\nd2 = {d2:.6f}",
+            f"d1 = {d1:.6f}\\nd2 = {d2:.6f}",
             language="text"
         )
 
@@ -100,77 +103,14 @@ def _show_calc_process(case: dict):
 
     with tab3:
         st.markdown("#### モンテカルロ シミュレーション")
-        st.latex(r"S_T = S_0 \exp\left[\left(r - q - \frac{\sigma^2}{2}\right)T + \sigma\sqrt{T}\,Z\right]")
+        st.latex(r"S_T = S_0 \\exp\\left[\\left(r - q - \\frac{\\sigma^2}{2}\\right)T + \\sigma\\sqrt{T}\\,Z\\right]")
         if opt == "call":
-            st.latex(r"\text{Payoff} = \max(S_T - K,\ 0)")
+            st.latex(r"\\text{Payoff} = \\max(S_T - K,\\ 0)")
         else:
-            st.latex(r"\text{Payoff} = \max(K - S_T,\ 0)")
-        st.latex(r"\text{Price} = e^{-rT} \times \mathbb{E}[\text{Payoff}]")
+            st.latex(r"\\text{Payoff} = \\max(K - S_T,\\ 0)")
+        st.latex(r"\\text{Price} = e^{-rT} \\times \\mathbb{E}[\\text{Payoff}]")
         st.success(f"モンテカルロ価格: ¥{float(case['mc_price']):,.4f}  ({M:,}回シミュレーション)")
         st.info(f"標準誤差 ≈ σ_payoff / √M　シミュレーション数: {M:,}回")
-
-        import matplotlib
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
-        import matplotlib.font_manager as fm
-        # Windows日本語フォント設定
-        jp_fonts = ["MS Gothic", "Yu Gothic", "Meiryo", "IPAexGothic", "DejaVu Sans"]
-        available = [f.name for f in fm.fontManager.ttflist]
-        for font in jp_fonts:
-            if font in available:
-                plt.rcParams["font.family"] = font
-                break
-
-        rng = np.random.default_rng(42)
-        n_paths = min(200, M)
-        n_steps = 50
-        dt_mc = T / n_steps
-        Z_paths = rng.standard_normal((n_paths, n_steps))
-        log_ret = (r - q - 0.5 * v**2) * dt_mc + v * np.sqrt(dt_mc) * Z_paths
-        S_paths = S * np.exp(np.cumsum(log_ret, axis=1))
-        S_paths = np.hstack([np.full((n_paths, 1), S), S_paths])
-
-        # 各時点の平均・標準偏差を計算
-        mean_path = np.mean(S_paths, axis=0)
-        std_path  = np.std(S_paths,  axis=0)
-        time_steps = np.arange(S_paths.shape[1])
-
-        # グラフ1: 最終株価の分布ヒストグラム
-        final_prices = S_paths[:, -1]
-        fig1, ax1 = plt.subplots(figsize=(10, 4))
-        ax1.hist(final_prices, bins=80, color="steelblue", edgecolor="white", alpha=0.8, density=True)
-        ax1.axvline(final_prices.mean(), color="green", linestyle="--", linewidth=2, label=f"平均株価: {final_prices.mean():,.0f}円")
-        ax1.axvline(K, color="red", linestyle="--", linewidth=2, label=f"行使価格: {K:,.0f}円")
-        ax1.set_xlabel("株価（円）")
-        ax1.set_ylabel("起こりやすさ（確率密度）")
-        ax1.set_title("満期時点の株価分布")
-        ax1.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x:,.0f}"))
-        ax1.legend(fontsize=9, loc="upper right")
-        ax1.grid(axis="y", linestyle="--", alpha=0.4)
-        plt.tight_layout()
-        st.pyplot(fig1)
-        plt.close(fig1)
-        plt.close(fig1)
-
-        Z_all = rng.standard_normal(M)
-        S_T = S * np.exp((r - q - 0.5 * v**2) * T + v * np.sqrt(T) * Z_all)
-        if opt == "call":
-            payoffs = np.maximum(S_T - K, 0)
-        else:
-            payoffs = np.maximum(K - S_T, 0)
-        disc_payoffs = np.exp(-r * T) * payoffs
-
-        fig2, ax2 = plt.subplots(figsize=(8, 3))
-        ax2.hist(disc_payoffs, bins=60, color="steelblue", edgecolor="white", alpha=0.8)
-        ax2.axvline(disc_payoffs.mean(), color="red", linestyle="--",
-                    linewidth=1.5, label=f"平均 = {disc_payoffs.mean():,.2f}")
-        ax2.set_xlabel("割引ペイオフ")
-        ax2.set_ylabel("頻度")
-        ax2.set_title("ペイオフ分布")
-        ax2.legend(fontsize=8)
-        plt.tight_layout()
-        st.pyplot(fig2)
-        plt.close(fig2)
 
 
 def _show_view(case: dict, case_id: int):
@@ -275,7 +215,7 @@ def show(case_id: int):
 
     col_title, col_btn = st.columns([4, 1])
     with col_title:
-        st.title(f"\U0001f4cb {case['case_name']}")
+        st.title(f"\\U0001f4cb {case['case_name']}")
     with col_btn:
         if not st.session_state[edit_key]:
             if st.button("編集・再評価", use_container_width=True):
@@ -295,10 +235,7 @@ def show(case_id: int):
         _show_view(case, case_id)
     else:
         _show_edit(case, case_id, edit_key)
+"""
 
-
-# app.py / case_list.py から呼ばれるエントリーポイント
-def render(case_id: int | None = None):
-    if case_id is None:
-        case_id = st.session_state.get('detail_case_id')
-    show(case_id)
+pathlib.Path("src/ui/pages/case_detail.py").write_text(CONTENT, encoding="utf-8")
+print("完了: src/ui/pages/case_detail.py を書き込みました")

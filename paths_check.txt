@@ -1,0 +1,25 @@
+21:         ret = np.log(hist["Close"] / hist["Close"].shift(1)).dropna()
+22:         vol = float(ret.std() * np.sqrt(252))
+42:     M   = int(case["mc_simulations"])
+62:         st.latex(r"d_1 = \frac{\ln(S/K) + (r - q + \frac{\sigma^2}{2})T}{\sigma\sqrt{T}}")
+103:         st.latex(r"S_T = S_0 \exp\left[\left(r - q - \frac{\sigma^2}{2}\right)T + \sigma\sqrt{T}\,Z\right]")
+110:         st.info(f"標準誤差 ≈ σ_payoff / √M　シミュレーション数: {M:,}回")
+124:         rng = np.random.default_rng(42)
+125:         n_paths = min(200, M)
+128:         Z_paths = rng.standard_normal((n_paths, n_steps))
+129:         log_ret = (r - q - 0.5 * v**2) * dt_mc + v * np.sqrt(dt_mc) * Z_paths
+130:         S_paths = S * np.exp(np.cumsum(log_ret, axis=1))
+131:         S_paths = np.hstack([np.full((n_paths, 1), S), S_paths])
+134:         mean_path = np.mean(S_paths, axis=0)
+135:         std_path  = np.std(S_paths,  axis=0)
+136:         time_steps = np.arange(S_paths.shape[1])
+139:         final_prices = paths[:, -1]
+156:         S_T = S * np.exp((r - q - 0.5 * v**2) * T + v * np.sqrt(T) * Z_all)
+158:             payoffs = np.maximum(S_T - K, 0)
+160:             payoffs = np.maximum(K - S_T, 0)
+161:         disc_payoffs = np.exp(-r * T) * payoffs
+164:         ax2.hist(disc_payoffs, bins=60, color="steelblue", edgecolor="white", alpha=0.8)
+165:         ax2.axvline(disc_payoffs.mean(), color="red", linestyle="--",
+166:                     linewidth=1.5, label=f"平均 = {disc_payoffs.mean():,.2f}")
+228:             mc_simulations  = st.number_input("モンテカルロ回数",     value=int(case["mc_simulations"]),  min_value=1000, max_value=1000000, step=1000)
+243:             mc_simulations=int(mc_simulations),

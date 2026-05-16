@@ -1,243 +1,262 @@
-﻿"""
-ValuationService - オプション評価メインサービス
-Black-Scholes (50%) + 二項モデル (30%) + モンテカルロ (20%)
-"""
+﻿# src/services/valuation_service.py
 from __future__ import annotations
-
-from dataclasses import dataclass
-from datetime import date
+import datetime, math, logging
+from dataclasses import dataclass, field
 from typing import Optional
-
 import numpy as np
 from scipy.stats import norm
+from sqlalchemy.orm import Session
+from src.data.models import ValuationCase, ComparableTicker, JST
+from src.data.database import get_session
 
+logger = logging.getLogger(__name__)
 
-# ── Black-Scholes ────────────────────────────────────────────────────────────
-def _bs_price(S, K, T, r, sigma, q, is_call: bool) -> float:
-    if T <= 0 or sigma <= 0:
-        return max(0.0, (S - K) if is_call else (K - S))
-    d1 = (np.log(S / K) + (r - q + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
-    d2 = d1 - sigma * np.sqrt(T)
-    if is_call:
-        return float(S * np.exp(-q * T) * norm.cdf(d1) - K * np.exp(-r * T) * norm.cdf(d2))
-    return float(K * np.exp(-r * T) * norm.cdf(-d2) - S * np.exp(-q * T) * norm.cdf(-d1))
+# ── パラメータ DTO ──────────────────────────────────────────────
+@dataclass
+class ValuationParams:
+    case_name:        str
+    stock_price:      float
+    strike_price:     float
+    risk_free_rate:   float
+    volatility:       float
+    time_to_expiry:   float
+    option_type:      str   = "call"
+    dividend_yield:   float = 0.0
+    binomial_steps:   int   = 100
+    mc_simulations:   int   = 10_000
 
+@dataclass
+class ComparableTickerRow:
+    ticker:        str
+    company_label: str   = ""
+    volatility:    float = 0.0
+    vol_period:    str   = "1y"
+    fetch_ok:      bool  = True
+    error_msg:     str   = ""
 
-def _bs_greeks(S, K, T, r, sigma, q, is_call: bool) -> dict:
-    if T <= 0 or sigma <= 0:
-        return {"delta": 0.0, "gamma": 0.0, "theta": 0.0, "vega": 0.0, "rho": 0.0}
-    sqT = np.sqrt(T)
-    d1 = (np.log(S / K) + (r - q + 0.5 * sigma**2) * T) / (sigma * sqT)
-    d2 = d1 - sigma * sqT
-    nd1 = norm.pdf(d1)
-    delta = (np.exp(-q * T) * norm.cdf(d1)
-             if is_call else -np.exp(-q * T) * norm.cdf(-d1))
-    gamma = np.exp(-q * T) * nd1 / (S * sigma * sqT)
-    vega  = S * np.exp(-q * T) * nd1 * sqT / 100
-    if is_call:
-        theta = (
-            -S * np.exp(-q * T) * nd1 * sigma / (2 * sqT)
-            - r * K * np.exp(-r * T) * norm.cdf(d2)
-            + q * S * np.exp(-q * T) * norm.cdf(d1)
-        )
-        rho = K * T * np.exp(-r * T) * norm.cdf(d2) / 100
-    else:
-        theta = (
-            -S * np.exp(-q * T) * nd1 * sigma / (2 * sqT)
-            + r * K * np.exp(-r * T) * norm.cdf(-d2)
-            - q * S * np.exp(-q * T) * norm.cdf(-d1)
-        )
-        rho = -K * T * np.exp(-r * T) * norm.cdf(-d2) / 100
-    return {
-        "delta": float(delta),
-        "gamma": float(gamma),
-        "theta": float(theta / 365),
-        "vega":  float(vega),
-        "rho":   float(rho),
-    }
-
-
-# ── CRR 二項モデル ────────────────────────────────────────────────────────────
-def _binomial_price(S, K, T, r, sigma, q, is_call: bool,
-                    american: bool = False, n: int = 200) -> float:
-    dt   = T / n
-    u    = np.exp(sigma * np.sqrt(dt))
-    d    = 1 / u
-    disc = np.exp(-r * dt)
-    p    = np.clip((np.exp((r - q) * dt) - d) / (u - d), 0, 1)
-    j    = np.arange(n + 1)
-    ST   = S * u**(n - j) * d**j
-    pf   = np.maximum(ST - K, 0) if is_call else np.maximum(K - ST, 0)
-    for step in range(n - 1, -1, -1):
-        pf = disc * (p * pf[:-1] + (1 - p) * pf[1:])
-        if american:
-            j2    = np.arange(len(pf))
-            ST_now = S * u**(step - j2) * d**j2
-            intr   = np.maximum(ST_now - K, 0) if is_call else np.maximum(K - ST_now, 0)
-            pf     = np.maximum(pf, intr)
-    return float(pf[0])
-
-
-# ── モンテカルロ ────────────────────────────────────────────────────────────────
-def _mc_price(S, K, T, r, sigma, q, is_call: bool,
-              n_paths: int = 10_000, seed: int = 42) -> tuple[float, float]:
-    rng = np.random.default_rng(seed)
-    Z   = rng.standard_normal(n_paths)
-    ST  = S * np.exp((r - q - 0.5 * sigma**2) * T + sigma * np.sqrt(T) * Z)
-    pf  = np.maximum(ST - K, 0) if is_call else np.maximum(K - ST, 0)
-    disc_pf = np.exp(-r * T) * pf
-    return float(disc_pf.mean()), float(disc_pf.std(ddof=1) / np.sqrt(n_paths))
-
-
-# ── 結果データクラス ────────────────────────────────────────────────────────────
+# ── 計算結果 DTO ────────────────────────────────────────────────
 @dataclass
 class ValuationResult:
-    call_price: float
-    put_price:  float
-    bs_call:    float = 0.0
-    bs_put:     float = 0.0
-    bin_call:   float = 0.0
-    bin_put:    float = 0.0
-    mc_call:    float = 0.0
-    mc_put:     float = 0.0
-    mc_se:      float = 0.0
-    delta_call: float = 0.0
-    gamma:      float = 0.0
-    theta:      float = 0.0
-    vega:       float = 0.0
-    rho:        float = 0.0
-    company_name:   str   = ""
-    stock_price:    float = 0.0
-    strike_price:   float = 0.0
-    risk_free_rate: float = 0.0
-    volatility:     float = 0.0
-    T:              float = 0.0
-    dividend_yield: float = 0.0
-    industry:       str   = ""
-    currency:       str   = "JPY"
-    valuation_date: object = None
+    bs_price:       float
+    binomial_price: float
+    mc_price:       float
+    weighted_price: float
+    delta:          float
+    gamma:          float
+    theta:          float
+    vega:           float
+    rho:            float
+    bs_detail:      dict = field(default_factory=dict)
+    bin_detail:     dict = field(default_factory=dict)
+    mc_detail:      dict = field(default_factory=dict)
 
+# ── Black-Scholes ───────────────────────────────────────────────
+def _bs(p: ValuationParams) -> tuple[float, dict]:
+    S, K, r, σ, T, q = (p.stock_price, p.strike_price, p.risk_free_rate,
+                         p.volatility, p.time_to_expiry, p.dividend_yield)
+    if T <= 0 or σ <= 0:
+        return 0.0, {}
+    d1 = (math.log(S / K) + (r - q + 0.5 * σ**2) * T) / (σ * math.sqrt(T))
+    d2 = d1 - σ * math.sqrt(T)
+    if p.option_type == "call":
+        price = S * math.exp(-q*T)*norm.cdf(d1) - K*math.exp(-r*T)*norm.cdf(d2)
+        delta = math.exp(-q*T) * norm.cdf(d1)
+        rho   = K * T * math.exp(-r*T) * norm.cdf(d2) / 100
+    else:
+        price = K*math.exp(-r*T)*norm.cdf(-d2) - S*math.exp(-q*T)*norm.cdf(-d1)
+        delta = -math.exp(-q*T) * norm.cdf(-d1)
+        rho   = -K * T * math.exp(-r*T) * norm.cdf(-d2) / 100
+    gamma = math.exp(-q*T)*norm.pdf(d1) / (S * σ * math.sqrt(T))
+    theta = (-(S*math.exp(-q*T)*norm.pdf(d1)*σ)/(2*math.sqrt(T))
+             - r*K*math.exp(-r*T)*norm.cdf(d2 if p.option_type=="call" else -d2)) / 365
+    vega  = S * math.exp(-q*T) * norm.pdf(d1) * math.sqrt(T) / 100
+    return price, dict(delta=delta, gamma=gamma, theta=theta, vega=vega, rho=rho)
 
-# ── ValuationService ──────────────────────────────────────────────────────────
+# ── 二項モデル ──────────────────────────────────────────────────
+def _binomial(p: ValuationParams) -> tuple:
+    S, K, r, σ, T, q, N = (p.stock_price, p.strike_price, p.risk_free_rate,
+                             p.volatility, p.time_to_expiry, p.dividend_yield,
+                             p.binomial_steps)
+    if T <= 0 or σ <= 0:
+        return 0.0, {}
+    dt = T / N
+    u  = math.exp(σ * math.sqrt(dt))
+    d  = 1 / u
+    pu = (math.exp((r - q) * dt) - d) / (u - d)
+    pd = 1 - pu
+    disc = math.exp(-r * dt)
+    prices = np.array([S * u**j * d**(N-j) for j in range(N+1)])
+    vals   = np.maximum(prices - K, 0) if p.option_type=="call" else np.maximum(K - prices, 0)
+    for _ in range(N):
+        vals = disc * (pu * vals[1:] + pd * vals[:-1])
+    detail = dict(u=u, d=d, p_up=pu, p_down=pd, dt=dt, steps=N, disc=disc)
+    return float(vals[0]), detail
+
+# ── モンテカルロ ────────────────────────────────────────────────
+def _mc(p: ValuationParams) -> tuple:
+    S, K, r, σ, T, q = (p.stock_price, p.strike_price, p.risk_free_rate,
+                         p.volatility, p.time_to_expiry, p.dividend_yield)
+    if T <= 0 or σ <= 0:
+        return 0.0, {}
+    rng = np.random.default_rng(42)
+    Z   = rng.standard_normal(p.mc_simulations)
+    ST  = S * np.exp((r - q - 0.5*σ**2)*T + σ*math.sqrt(T)*Z)
+    payoff = np.maximum(ST - K, 0) if p.option_type=="call" else np.maximum(K - ST, 0)
+    price  = float(np.exp(-r*T) * payoff.mean())
+    mean_p = float(payoff.mean())
+    std_p  = float(payoff.std())
+    se     = float(std_p / math.sqrt(p.mc_simulations))
+    ci_lo  = float(np.exp(-r*T) * (mean_p - 1.96*se))
+    ci_hi  = float(np.exp(-r*T) * (mean_p + 1.96*se))
+    detail = dict(
+        simulations=p.mc_simulations,
+        mean=mean_p,
+        std=std_p,
+        se=se,
+        ci_low=ci_lo,
+        ci_high=ci_hi,
+        payoffs=payoff,
+    )
+    return price, detail
+
+# ── データ転写ヘルパー ──────────────────────────────────────────
+def _case_to_dict(case: ValuationCase) -> dict:
+    """セッション内でカラム値をすべて dict に取り出す"""
+    return {c.key: getattr(case, c.key)
+            for c in case.__mapper__.column_attrs}
+
+def _ticker_to_dict(t: ComparableTicker) -> dict:
+    return {c.key: getattr(t, c.key)
+            for c in t.__mapper__.column_attrs}
+
+# ── メインサービス ──────────────────────────────────────────────
 class ValuationService:
-    """BS (50%) + 二項 (30%) + MC (20%) の加重平均"""
 
-    WEIGHTS = {"bs": 0.50, "binomial": 0.30, "mc": 0.20}
-
-    def calculate(
-        self,
-        company_name: str,
-        stock_price: float,
-        strike_price: float,
-        risk_free_rate: float,
-        volatility: float,
-        T: float,
-        dividend_yield: float = 0.0,
-        industry: str = "general",
-        valuation_date: Optional[date] = None,
-        currency: str = "JPY",
-        american: bool = False,
-        n_steps: int = 200,
-        n_paths: int = 10_000,
-    ) -> ValuationResult:
-        S, K, r, s, q = stock_price, strike_price, risk_free_rate, volatility, dividend_yield
-
-        bs_c  = _bs_price(S, K, T, r, s, q, True)
-        bs_p  = _bs_price(S, K, T, r, s, q, False)
-        gr    = _bs_greeks(S, K, T, r, s, q, True)
-        bin_c = _binomial_price(S, K, T, r, s, q, True,  american, n_steps)
-        bin_p = _binomial_price(S, K, T, r, s, q, False, american, n_steps)
-        mc_c, mc_se = _mc_price(S, K, T, r, s, q, True,  n_paths)
-        mc_p, _     = _mc_price(S, K, T, r, s, q, False, n_paths)
-
-        w = self.WEIGHTS
-        call = w["bs"]*bs_c + w["binomial"]*bin_c + w["mc"]*mc_c
-        put  = w["bs"]*bs_p + w["binomial"]*bin_p + w["mc"]*mc_p
-
+    def calculate(self, p: ValuationParams) -> ValuationResult:
+        bs_price,  bs_detail  = _bs(p)
+        bin_price, bin_detail = _binomial(p)
+        mc_price,  mc_detail  = _mc(p)
+        weighted = 0.5*bs_price + 0.3*bin_price + 0.2*mc_price
         return ValuationResult(
-            call_price=call, put_price=put,
-            bs_call=bs_c,   bs_put=bs_p,
-            bin_call=bin_c, bin_put=bin_p,
-            mc_call=mc_c,   mc_put=mc_p,
-            mc_se=mc_se,
-            delta_call=gr["delta"], gamma=gr["gamma"],
-            theta=gr["theta"], vega=gr["vega"], rho=gr["rho"],
-            company_name=company_name,
-            stock_price=S, strike_price=K,
-            risk_free_rate=r, volatility=s, T=T,
-            dividend_yield=q, industry=industry,
-            currency=currency,
-            valuation_date=valuation_date or date.today(),
+            bs_price       = bs_price,
+            binomial_price = bin_price,
+            mc_price       = mc_price,
+            weighted_price = weighted,
+            delta          = bs_detail.get("delta", 0.0),
+            gamma          = bs_detail.get("gamma", 0.0),
+            theta          = bs_detail.get("theta", 0.0),
+            vega           = bs_detail.get("vega",  0.0),
+            rho            = bs_detail.get("rho",   0.0),
+            bs_detail      = bs_detail,
+            bin_detail     = bin_detail,
+            mc_detail      = mc_detail,
         )
 
-    def save(
-        self,
-        result: ValuationResult,
-        option_type: str = "call",
-    ) -> Optional[int]:
-        """評価結果をDBへ保存。失敗時は None を返す。"""
-        try:
-            from src.data.database import get_db_manager
-            from src.data.models import (
-                ValuationCase,
-                ValuationParameter,
-                ValuationResult as ORMResult,
+    def save(self, p: ValuationParams, r: ValuationResult,
+             comparables: list[ComparableTickerRow] | None = None) -> int:
+        with get_session() as sess:
+            case = ValuationCase(
+                case_name       = p.case_name,
+                stock_price     = p.stock_price,
+                strike_price    = p.strike_price,
+                risk_free_rate  = p.risk_free_rate,
+                volatility      = p.volatility,
+                time_to_expiry  = p.time_to_expiry,
+                option_type     = p.option_type,
+                dividend_yield  = p.dividend_yield,
+                binomial_steps  = p.binomial_steps,
+                mc_simulations  = p.mc_simulations,
+                bs_price        = r.bs_price,
+                binomial_price  = r.binomial_price,
+                mc_price        = r.mc_price,
+                weighted_price  = r.weighted_price,
+                delta           = r.delta,
+                gamma           = r.gamma,
+                theta           = r.theta,
+                vega            = r.vega,
+                rho             = r.rho,
             )
+            sess.add(case)
+            sess.flush()   # id を確定させる
+            if comparables:
+                for c in comparables:
+                    sess.add(ComparableTicker(
+                        case_id       = case.id,
+                        ticker        = c.ticker,
+                        company_label = c.company_label,
+                        volatility    = c.volatility,
+                        vol_period    = c.vol_period,
+                        fetch_ok      = c.fetch_ok,
+                        error_msg     = c.error_msg,
+                    ))
+            sess.commit()
+            return case.id   # コミット後なので id は確定済み
 
-            db = get_db_manager()
-            with db.get_session() as session:
-                # ── 1. ValuationCase ──────────────────────────────
-                case = ValuationCase(
-                    case_name=f"{result.company_name} - {result.valuation_date}",
-                    company_name=result.company_name,
-                    is_deleted=0,
-                    notes=f"業種: {result.industry}, 通貨: {result.currency}",
-                )
-                session.add(case)
-                session.flush()   # case.id を確定
+    def update(self, case_id: int, p: ValuationParams, r: ValuationResult,
+               comparables: list[ComparableTickerRow] | None = None) -> None:
+        with get_session() as sess:
+            case = sess.get(ValuationCase, case_id)
+            if case is None:
+                raise ValueError(f"Case {case_id} not found")
+            case.case_name      = p.case_name
+            case.stock_price    = p.stock_price
+            case.strike_price   = p.strike_price
+            case.risk_free_rate = p.risk_free_rate
+            case.volatility     = p.volatility
+            case.time_to_expiry = p.time_to_expiry
+            case.option_type    = p.option_type
+            case.dividend_yield = p.dividend_yield
+            case.binomial_steps = p.binomial_steps
+            case.mc_simulations = p.mc_simulations
+            case.bs_price       = r.bs_price
+            case.binomial_price = r.binomial_price
+            case.mc_price       = r.mc_price
+            case.weighted_price = r.weighted_price
+            case.delta          = r.delta
+            case.gamma          = r.gamma
+            case.theta          = r.theta
+            case.vega           = r.vega
+            case.rho            = r.rho
+            case.updated_at     = datetime.datetime.now(JST)
+            sess.query(ComparableTicker).filter(
+                ComparableTicker.case_id == case_id).delete()
+            if comparables:
+                for c in comparables:
+                    sess.add(ComparableTicker(
+                        case_id       = case_id,
+                        ticker        = c.ticker,
+                        company_label = c.company_label,
+                        volatility    = c.volatility,
+                        vol_period    = c.vol_period,
+                        fetch_ok      = c.fetch_ok,
+                        error_msg     = c.error_msg,
+                    ))
+            sess.commit()
 
-                # ── 2. ValuationParameter ─────────────────────────
-                param = ValuationParameter(
-                    case_id=case.id,
-                    stock_price=result.stock_price,
-                    strike_price=result.strike_price,
-                    time_to_expiry=result.T,
-                    risk_free_rate=result.risk_free_rate,
-                    volatility=result.volatility,
-                    dividend_yield=result.dividend_yield,
-                    option_type=option_type,
-                )
-                session.add(param)
+    def get_all_cases(self) -> list[dict]:
+        """セッションが閉じた後も安全に使えるよう dict のリストで返す"""
+        with get_session() as sess:
+            cases = sess.query(ValuationCase).order_by(
+                ValuationCase.created_at.desc()).all()
+            return [_case_to_dict(c) for c in cases]
 
-                # ── 3. ValuationResult (コール) ────────────────────
-                orm_call = ORMResult(
-                    case_id=case.id,
-                    model_type="weighted_call",
-                    option_value=result.call_price,
-                    delta=result.delta_call,
-                    gamma=result.gamma,
-                    theta=result.theta,
-                    vega=result.vega,
-                    rho=result.rho,
-                )
-                session.add(orm_call)
+    def get_case(self, case_id: int) -> Optional[dict]:
+        """dict で返すのでセッション外でも安全"""
+        with get_session() as sess:
+            case = sess.get(ValuationCase, case_id)
+            if case is None:
+                return None
+            return _case_to_dict(case)
 
-                # ── 4. ValuationResult (プット) ────────────────────
-                orm_put = ORMResult(
-                    case_id=case.id,
-                    model_type="weighted_put",
-                    option_value=result.put_price,
-                    delta=None,
-                    gamma=result.gamma,
-                    theta=None,
-                    vega=result.vega,
-                    rho=None,
-                )
-                session.add(orm_put)
+    def get_comparable_tickers(self, case_id: int) -> list[dict]:
+        with get_session() as sess:
+            tickers = sess.query(ComparableTicker).filter(
+                ComparableTicker.case_id == case_id).all()
+            return [_ticker_to_dict(t) for t in tickers]
 
-                return case.id   # commit は get_session() が自動実行
-
-        except Exception:
-            import traceback
-            traceback.print_exc()
-            return None
+    def delete_case(self, case_id: int) -> None:
+        with get_session() as sess:
+            case = sess.get(ValuationCase, case_id)
+            if case:
+                sess.delete(case)
+                sess.commit()
