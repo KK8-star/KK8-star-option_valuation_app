@@ -41,7 +41,7 @@ if st.session_state["current_page"] not in PAGES:
     st.session_state["current_page"] = "ホーム"
 
 with st.sidebar:
-    # logo removed
+    st.image("assets/logo.png", use_column_width=True)
     st.markdown(
         '<div style="padding:0.5rem 0 1rem;">'
         '<h2 style="margin:0;font-size:1.3rem;">オプション評価</h2>'
