@@ -143,40 +143,31 @@ def _show_calc_process(case: dict):
         mean_val = final_prices.mean()
         std_val  = final_prices.std()
 
-        # ラベル配置：近い場合はY座標＋矢印で分離
-        label_gap = yrange * 0.18
-        mean_y   = ymax * 0.92
-        strike_y = ymax * 0.92
-        xrange   = ax1.get_xlim()[1] - ax1.get_xlim()[0]
+        # ラベル配置：axes座標系で完全固定（重複ゼロ保証）
+        xmin, xmax = ax1.get_xlim()
+        xrange = xmax - xmin
 
-        close = abs(mean_val - K) < std_val * 0.6
-
-        if close:
-            if mean_val >= K:
-                mean_y   = ymax * 0.93
-                strike_y = ymax * 0.93 - label_gap
-            else:
-                strike_y = ymax * 0.93
-                mean_y   = ymax * 0.93 - label_gap
-
-        # annotate（矢印付き）で線との対応を明確化
+        # Mean → 左寄り固定（axes座標 0.25）
+        # Strike → 右寄り固定（axes座標 0.75）
         ax1.annotate(
-            f"Mean
-{mean_val:,.0f}",
-            xy=(mean_val, ymax * 0.02),
-            xytext=(mean_val - xrange * 0.08 if close else mean_val, mean_y),
-            ha="center", va="top", fontsize=8, fontweight="bold", color="green",
-            bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor="green", alpha=0.9),
-            arrowprops=dict(arrowstyle="->" , color="green", lw=1.2) if close else None,
+            f"Mean\n{mean_val:,.0f}",
+            xy=(mean_val, ymax * 0.5),
+            xytext=(0.25, 0.93),
+            textcoords="axes fraction",
+            ha="center", va="top", fontsize=9, fontweight="bold", color="green",
+            bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor="green", alpha=0.95),
+            arrowprops=dict(arrowstyle="->", color="green", lw=1.5,
+                            connectionstyle="arc3,rad=0.0"),
         )
         ax1.annotate(
-            f"Strike
-{K:,.0f}",
-            xy=(K, ymax * 0.02),
-            xytext=(K + xrange * 0.08 if close else K, strike_y),
-            ha="center", va="top", fontsize=8, fontweight="bold", color="red",
-            bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor="red", alpha=0.9),
-            arrowprops=dict(arrowstyle="->", color="red", lw=1.2) if close else None,
+            f"Strike\n{K:,.0f}",
+            xy=(K, ymax * 0.5),
+            xytext=(0.75, 0.93),
+            textcoords="axes fraction",
+            ha="center", va="top", fontsize=9, fontweight="bold", color="red",
+            bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor="red", alpha=0.95),
+            arrowprops=dict(arrowstyle="->", color="red", lw=1.5,
+                            connectionstyle="arc3,rad=0.0"),
         )
         ax1.grid(axis="y", linestyle="--", alpha=0.4)
         plt.tight_layout()
