@@ -141,11 +141,26 @@ def _show_calc_process(case: dict):
         ymin, ymax = ax1.get_ylim()
         yrange = ymax - ymin
         mean_val = final_prices.mean()
-        offset = yrange * 0.08 if abs(mean_val - K) < (final_prices.std() * 0.5) else 0
-        ax1.text(mean_val, ymax * 0.95, f"Mean: {mean_val:,.0f}", color="green", ha="center", va="top", fontsize=8, fontweight="bold",
-                 bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.7))
-        ax1.text(K, ymax * 0.95 - offset - yrange * 0.12, f"Strike: {K:,.0f}", color="red", ha="center", va="top", fontsize=8, fontweight="bold",
-                 bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.7))
+        std_val  = final_prices.std()
+
+        # ラベルY座標：近い場合は上下に分離
+        label_gap = yrange * 0.15  # ラベル間の最低垂直距離
+        mean_y   = ymax * 0.93
+        strike_y = ymax * 0.93
+
+        if abs(mean_val - K) < std_val * 0.5:
+            # MeanとStrikeが近い → MeanStrike の大小で上下を決める
+            if mean_val >= K:
+                mean_y   = ymax * 0.93
+                strike_y = ymax * 0.93 - label_gap
+            else:
+                strike_y = ymax * 0.93
+                mean_y   = ymax * 0.93 - label_gap
+
+        ax1.text(mean_val, mean_y,   f"Mean: {mean_val:,.0f}",   color="green", ha="center", va="top", fontsize=8, fontweight="bold",
+                 bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.8))
+        ax1.text(K,        strike_y, f"Strike: {K:,.0f}",        color="red",   ha="center", va="top", fontsize=8, fontweight="bold",
+                 bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.8))
         ax1.grid(axis="y", linestyle="--", alpha=0.4)
         plt.tight_layout()
         st.pyplot(fig1)
