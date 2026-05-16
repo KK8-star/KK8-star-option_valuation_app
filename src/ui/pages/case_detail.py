@@ -137,7 +137,9 @@ def _show_calc_process(case: dict):
         ax1.set_ylabel("Probability Density")
         ax1.set_title("Stock Price Distribution at Maturity")
         ax1.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x:,.0f}"))
-        ax1.legend(fontsize=9, loc="upper right")
+        ymax = ax1.get_ylim()[1]
+        ax1.text(final_prices.mean(), ymax * 0.92, f"Mean\n{final_prices.mean():,.0f}", color="green", ha="center", va="top", fontsize=8)
+        ax1.text(K, ymax * 0.78, f"Strike\n{K:,.0f}", color="red", ha="center", va="top", fontsize=8)
         ax1.grid(axis="y", linestyle="--", alpha=0.4)
         plt.tight_layout()
         st.pyplot(fig1)
