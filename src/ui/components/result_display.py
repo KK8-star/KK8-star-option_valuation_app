@@ -416,12 +416,16 @@ def render_calculation_detail(params: dict, result) -> None:
                         x=edges[:-1].tolist(), y=counts.tolist(),
                         marker_color="steelblue", opacity=0.75, name="S_T"
                     ))
-                    fig.add_vline(x=float(K),       line_dash="dash",
+                    fig.add_vline(x=float(K), line_dash="dash",
                                   line_color="red",
-                                  annotation_text=f"K={K:,.0f}")
+                                  annotation_text=f"K={K:,.0f}",
+                                  annotation_position="top left",
+                                  annotation_yshift=0)
                     fig.add_vline(x=float(mean_ST), line_dash="dot",
                                   line_color="green",
-                                  annotation_text=f"mean={mean_ST:,.0f}")
+                                  annotation_text=f"mean={mean_ST:,.0f}",
+                                  annotation_position="top right",
+                                  annotation_yshift=-20)
                     fig.update_layout(
                         title="末端株価分布", xaxis_title="S_T",
                         yaxis_title="頻度", height=350,
@@ -444,7 +448,9 @@ def render_calculation_detail(params: dict, result) -> None:
                         fig2.add_vline(
                             x=float(_np.mean(itm_arr)), line_dash="dash",
                             line_color="red",
-                            annotation_text=f"平均={_np.mean(itm_arr):,.0f}"
+                            annotation_text=f"平均={_np.mean(itm_arr):,.0f}",
+                            annotation_position="top right",
+                            annotation_yshift=0
                         )
                         fig2.update_layout(
                             title="ITMペイオフ分布", xaxis_title="ペイオフ",
@@ -465,3 +471,6 @@ def render_calculation_detail(params: dict, result) -> None:
                 )
             else:
                 st.info("計算詳細データがありません（T=0 または sigma=0）")
+
+
+
