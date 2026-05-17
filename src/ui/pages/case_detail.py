@@ -1,4 +1,4 @@
-# src/ui/pages/case_detail.py
+﻿# src/ui/pages/case_detail.py
 from __future__ import annotations
 import streamlit as st
 import pandas as pd
@@ -162,7 +162,7 @@ def _show_calc_process(case: dict):
         ax1.annotate(
             f"Strike\n{K:,.0f}",
             xy=(K, ymax * 0.5),
-            xytext=(0.85, 0.93),
+            xytext=(0.75, 0.93),
             textcoords="axes fraction",
             ha="center", va="top", fontsize=9, fontweight="bold", color="red",
             bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor="red", alpha=0.95),
@@ -324,3 +324,4 @@ def render(case_id: int | None = None):
     if case_id is None:
         case_id = st.session_state.get('detail_case_id')
     show(case_id)
+
