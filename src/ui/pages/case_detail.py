@@ -147,12 +147,12 @@ def _show_calc_process(case: dict):
         xmin, xmax = ax1.get_xlim()
         xrange = xmax - xmin
 
-        # Mean → 左寄り固定（axes座標 0.25）
-        # Strike → 右寄り固定（axes座標 0.75）
+        # Mean → 左端固定（axes座標 0.15）
+        # Strike → 右端固定（axes座標 0.85）
         ax1.annotate(
             f"Mean\n{mean_val:,.0f}",
             xy=(mean_val, ymax * 0.5),
-            xytext=(0.25, 0.93),
+            xytext=(0.15, 0.93),
             textcoords="axes fraction",
             ha="center", va="top", fontsize=9, fontweight="bold", color="green",
             bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor="green", alpha=0.95),
@@ -162,7 +162,7 @@ def _show_calc_process(case: dict):
         ax1.annotate(
             f"Strike\n{K:,.0f}",
             xy=(K, ymax * 0.5),
-            xytext=(0.75, 0.93),
+            xytext=(0.85, 0.93),
             textcoords="axes fraction",
             ha="center", va="top", fontsize=9, fontweight="bold", color="red",
             bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor="red", alpha=0.95),
