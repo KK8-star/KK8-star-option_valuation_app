@@ -1,3 +1,6 @@
+﻿import pathlib
+
+content = """\
 import streamlit as st
 import numpy as np
 import matplotlib
@@ -167,8 +170,8 @@ def show(case: dict):
         st.subheader("Black-Scholes Price")
         price_bs = bs_price(S, K, T, r, sigma, option_type)
         st.metric("Option Price", f"{price_bs:.4f}")
-        st.latex(r"C = S \cdot N(d_1) - K e^{-rT} \cdot N(d_2)")
-        st.latex(r"d_1 = \frac{\ln(S/K) + (r + \frac{\sigma^2}{2})T}{\sigma\sqrt{T}}, \quad d_2 = d_1 - \sigma\sqrt{T}")
+        st.latex(r"C = S \\cdot N(d_1) - K e^{-rT} \\cdot N(d_2)")
+        st.latex(r"d_1 = \\frac{\\ln(S/K) + (r + \\frac{\\sigma^2}{2})T}{\\sigma\\sqrt{T}}, \\quad d_2 = d_1 - \\sigma\\sqrt{T}")
         st.subheader("Greeks")
         greeks = bs_greeks(S, K, T, r, sigma, option_type)
         g1, g2, g3, g4, g5 = st.columns(5)
@@ -245,3 +248,10 @@ def show(case: dict):
             s2.metric("Median Vol", f"{np.median(vols):.1%}")
             s3.metric("Min Vol", f"{np.min(vols):.1%}")
             s4.metric("Max Vol", f"{np.max(vols):.1%}")
+"""
+
+import pathlib
+out = pathlib.Path("src/ui/pages/case_detail.py")
+out.parent.mkdir(parents=True, exist_ok=True)
+out.write_text(content, encoding="utf-8")
+print(f"Written: {out}  ({out.stat().st_size} bytes)")
