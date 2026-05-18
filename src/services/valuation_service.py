@@ -299,9 +299,16 @@ class ValuationService:
                 ComparableTicker.case_id == case_id).all()
             return [_ticker_to_dict(t) for t in tickers]
 
+
+    def update_case(self, case_id: int, p: ValuationParams) -> None:
+        r = self.calculate(p)
+        self.update(case_id, p, r)
+
     def delete_case(self, case_id: int) -> None:
         with get_session() as sess:
             case = sess.get(ValuationCase, case_id)
             if case:
                 sess.delete(case)
                 sess.commit()
+
+
