@@ -1,5 +1,6 @@
 # src/ui/pages/case_detail.py
 from __future__ import annotations
+import time
 import streamlit as st
 import pandas as pd
 import math
@@ -13,36 +14,51 @@ svc = ValuationService()
 
 
 def _fetch_vol(ticker: str, period: str = "1y") -> "ComparableTickerRow":
-    try:
-        t_obj = yf.Ticker(ticker)
-        hist = t_obj.history(period=period)
-        if hist is None or hist.empty or len(hist) < 5:
-            return ComparableTickerRow(
-                ticker=ticker, fetch_ok=False,
-                error_msg="Insufficient data (fewer than 5 trading days)")
-        close = hist["Close"].dropna()
-        if len(close) < 2:
-            return ComparableTickerRow(
-                ticker=ticker, fetch_ok=False,
-                error_msg="Insufficient close price data")
-        log_ret = np.log(close / close.shift(1)).dropna()
-        if len(log_ret) < 2:
-            return ComparableTickerRow(
-                ticker=ticker, fetch_ok=False,
-                error_msg="Cannot compute returns (too few data points)")
-        vol = float(log_ret.std(ddof=1) * np.sqrt(252))
-        label = ticker
+    max_retries = 3
+    for attempt in range(max_retries):
         try:
-            info = t_obj.info
-            label = info.get("longName") or info.get("shortName") or ticker
-        except Exception:
+            time.sleep(1.5 + attempt * 2)
+            t_obj = yf.Ticker(ticker)
+            hist = t_obj.history(period=period)
+            if hist is None or hist.empty or len(hist) < 5:
+                return ComparableTickerRow(
+                    ticker=ticker, fetch_ok=False,
+                    error_msg="Insufficient data (fewer than 5 trading days)")
+            close = hist["Close"].dropna()
+            if len(close) < 2:
+                return ComparableTickerRow(
+                    ticker=ticker, fetch_ok=False,
+                    error_msg="Insufficient close price data")
+            log_ret = np.log(close / close.shift(1)).dropna()
+            if len(log_ret) < 2:
+                return ComparableTickerRow(
+                    ticker=ticker, fetch_ok=False,
+                    error_msg="Cannot compute returns (too few data points)")
+            vol = float(log_ret.std(ddof=1) * np.sqrt(252))
             label = ticker
-        return ComparableTickerRow(
-            ticker=ticker, company_label=label,
-            volatility=vol, vol_period=period, fetch_ok=True)
-    except Exception as e:
-        return ComparableTickerRow(
-            ticker=ticker, fetch_ok=False, error_msg=str(e))
+            try:
+                time.sleep(0.5)
+                info = t_obj.info
+                label = info.get("longName") or info.get("shortName") or ticker
+            except Exception:
+                label = ticker
+            return ComparableTickerRow(
+                ticker=ticker, company_label=label,
+                volatility=vol, vol_period=period, fetch_ok=True)
+        except Exception as e:
+            err_msg = str(e)
+            if "Too Many Requests" in err_msg or "rate limit" in err_msg.lower():
+                if attempt < max_retries - 1:
+                    wait = 5 + attempt * 5
+                    time.sleep(wait)
+                    continue
+                return ComparableTickerRow(
+                    ticker=ticker, fetch_ok=False,
+                    error_msg=f"Rate limited after {max_retries} retries. Please wait and try again.")
+            return ComparableTickerRow(
+                ticker=ticker, fetch_ok=False, error_msg=err_msg)
+    return ComparableTickerRow(
+        ticker=ticker, fetch_ok=False, error_msg="Max retries exceeded")
 
 
 def _parse_tickers(raw: str) -> list:
@@ -63,9 +79,7 @@ def _show_calc_process(case: dict):
     M   = int(case["mc_simulations"])
 
     tab1, tab2, tab3 = st.tabs([
-        "Black-Scholes",
-        "Binomial Model",
-        "Monte Carlo"])
+        "Black-Scholes", "Binomial Model", "Monte Carlo"])
 
     with tab1:
         st.markdown("#### Black-Scholes Model - Calculation Process")
@@ -140,8 +154,8 @@ def _show_calc_process(case: dict):
                       + v * np.sqrt(dt_mc) * Z_paths)
         S_paths = S * np.exp(np.cumsum(log_ret_mc, axis=1))
         S_paths = np.hstack([np.full((n_paths, 1), S), S_paths])
-
         final_prices = S_paths[:, -1]
+
         fig1, ax1 = plt.subplots(figsize=(10, 4))
         ax1.hist(final_prices, bins=80, color="steelblue",
                  edgecolor="white", alpha=0.8, density=True)
@@ -188,11 +202,13 @@ def _show_calc_process(case: dict):
 def _show_comparable_section():
     st.divider()
     st.subheader("Reference: Listed Comparable Volatility Estimation")
-    with st.expander("Fetch volatility from comparable companies",
-                     expanded=False):
+    with st.expander("Fetch volatility from comparable companies", expanded=False):
         st.markdown(
             "Enter one or more tickers separated by commas or spaces.  \n"
-            "Example: `7203.T, 9984.T, AAPL, MSFT`")
+            "Example: \`7203.T, 9984.T, AAPL, MSFT\`")
+        st.info(
+            "Note: Requests are spaced 1.5s apart to avoid rate limiting. "
+            "Multiple tickers may take a few seconds.")
         col_a, col_b = st.columns([3, 1])
         with col_a:
             ticker_raw = st.text_input(
