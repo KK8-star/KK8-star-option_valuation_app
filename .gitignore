@@ -19,3 +19,9 @@ secrets.toml
 # OS
 .DS_Store
 Thumbs.db
+
+# Utility scripts (not for deployment)
+write_case_detail.py
+fix*.py
+check_auth.py
+write_auth.py
