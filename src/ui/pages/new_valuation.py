@@ -1,15 +1,18 @@
 ﻿# src/ui/pages/new_valuation.py
+# -*- coding: utf-8 -*-
 from __future__ import annotations
-import streamlit as st
+
 import numpy as np
 import pandas as pd
-from src.ui.components.result_display import render_calculation_detail
+import streamlit as st
+
 from src.services.valuation_service import (
-    ValuationService,
+    ComparableTickerRow,
     ValuationParams,
     ValuationResult,
-    ComparableTickerRow,
+    ValuationService,
 )
+from src.ui.components.result_display import render_calculation_detail
 
 svc = ValuationService()
 
@@ -41,12 +44,11 @@ def _fetch_vol(ticker: str, period: str) -> ComparableTickerRow:
         )
 
 
-def render() -> None:
+def show() -> None:
     st.title("新規評価ケース作成")
 
-    # ── 基本パラメータ ────────────────────────────────────────────
     with st.expander("評価パラメータ", expanded=True):
-        case_name = st.text_input("ケース名", value="新規ケース")
+        case_name = st.text_input("ケース名 *", value="新規ケース")
 
         col1, col2 = st.columns(2)
         with col1:
@@ -66,7 +68,6 @@ def render() -> None:
         with col5:
             mc_simulations = st.number_input("MCシミュレーション数", value=10000, min_value=1000, step=1000)
 
-    # ── 類似会社ボラティリティ ────────────────────────────────────
     with st.expander("類似会社ボラティリティ（任意）"):
         ticker_input = st.text_input(
             "ティッカー（カンマ区切り）",
@@ -86,19 +87,24 @@ def render() -> None:
                 {
                     "ティッカー":         r.ticker,
                     "会社名":             r.company_label,
-                    "ボラティリティ":     f"{r.volatility:.2%}" if r.fetch_ok else "—",
-                    "ステータス":         "✓" if r.fetch_ok else f"✗ {r.error_msg}",
+                    "ボラティリティ":     f"{r.volatility:.2%}" if r.fetch_ok else "---",
+                    "ステータス":         "OK" if r.fetch_ok else f"NG: {r.error_msg}",
                 }
                 for r in rows
             ])
             st.dataframe(df, use_container_width=True)
 
-    # ── 計算・保存 ────────────────────────────────────────────────
-    if st.button("計算・保存", type="primary"):
+    st.markdown("---")
+    if st.button("計算・保存", type="primary", use_container_width=True):
+
+        if not case_name.strip():
+            st.error("ケース名は必須です。")
+            return
+
         comparables: list[ComparableTickerRow] = st.session_state.get("comparable_rows", [])
 
         params = ValuationParams(
-            case_name      = case_name,
+            case_name      = case_name.strip(),
             stock_price    = float(stock_price),
             strike_price   = float(strike_price),
             risk_free_rate = float(risk_free_rate),
@@ -110,28 +116,47 @@ def render() -> None:
             mc_simulations = int(mc_simulations),
         )
 
-        with st.spinner("計算中..."):
-            result: ValuationResult = svc.calculate(params)
-            case_id = svc.save(params, result, comparables or None)
+        try:
+            with st.spinner("計算中..."):
+                result: ValuationResult = svc.calculate(params)
+                case_id = svc.save(params, result, comparables or None)
 
-        st.success(f"保存完了 (case_id = {case_id})")
+            st.success(f"保存完了 (case_id = {case_id})")
 
-        # 結果表示
-        st.subheader("評価結果")
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("BS価格",   f"{result.bs_price:.4f}")
-        c2.metric("二項価格", f"{result.binomial_price:.4f}")
-        c3.metric("MC価格",   f"{result.mc_price:.4f}")
-        c4.metric("加重平均", f"{result.weighted_price:.4f}")
+            st.subheader("評価結果プレビュー")
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("BS価格",   f"{result.bs_price:.4f}")
+            c2.metric("二項価格", f"{result.binomial_price:.4f}")
+            c3.metric("MC価格",   f"{result.mc_price:.4f}")
+            c4.metric("加重平均", f"{result.weighted_price:.4f}")
 
-        st.subheader("Greeks")
-        g1, g2, g3, g4, g5 = st.columns(5)
-        g1.metric("Delta", f"{result.delta:.4f}")
-        g2.metric("Gamma", f"{result.gamma:.4f}")
-        g3.metric("Theta", f"{result.theta:.4f}")
-        g4.metric("Vega",  f"{result.vega:.4f}")
-        g5.metric("Rho",   f"{result.rho:.4f}")
-        render_calculation_detail(vars(params), result)
+            st.subheader("Greeks")
+            g1, g2, g3, g4, g5 = st.columns(5)
+            g1.metric("Delta", f"{result.delta:.4f}")
+            g2.metric("Gamma", f"{result.gamma:.4f}")
+            g3.metric("Theta", f"{result.theta:.4f}")
+            g4.metric("Vega",  f"{result.vega:.4f}")
+            g5.metric("Rho",   f"{result.rho:.4f}")
 
-        # comparable_rows をリセット
-        st.session_state.pop("comparable_rows", None)
+            render_calculation_detail(vars(params), result)
+
+            st.session_state.pop("comparable_rows", None)
+
+            st.markdown("---")
+            col_a, col_b = st.columns(2)
+            with col_a:
+                if st.button("詳細ページへ", use_container_width=True):
+                    st.session_state["detail_case_id"] = case_id
+                    st.session_state["current_page"]   = "case_detail"
+                    st.rerun()
+            with col_b:
+                if st.button("ケース一覧へ", use_container_width=True):
+                    st.session_state["current_page"] = "case_list"
+                    st.rerun()
+
+        except Exception as e:
+            st.error(f"エラーが発生しました: {e}")
+            raise
+
+
+render = show

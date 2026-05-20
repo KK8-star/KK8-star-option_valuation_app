@@ -1,5 +1,5 @@
-"""
-volatility_estimator.py - 非上場企業のボラティリティ推定ユーティリティ
+﻿"""
+volatility_estimator.py - 髱樔ｸ雁ｴ莨∵･ｭ縺ｮ繝懊Λ繝・ぅ繝ｪ繝・ぅ謗ｨ螳壹Θ繝ｼ繝・ぅ繝ｪ繝・ぅ
 """
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ except ImportError:
 
 
 # ============================================================
-# 業種別ボラティリティベンチマーク (年率)
+# 讌ｭ遞ｮ蛻･繝懊Λ繝・ぅ繝ｪ繝・ぅ繝吶Φ繝√・繝ｼ繧ｯ (蟷ｴ邇・
 # ============================================================
 INDUSTRY_VOLATILITY: dict[str, float] = {
     "technology":    0.45,
@@ -43,20 +43,18 @@ INDUSTRY_VOLATILITY: dict[str, float] = {
 
 
 # ============================================================
-# データクラス
+# 繝・・繧ｿ繧ｯ繝ｩ繧ｹ
 # ============================================================
 @dataclass
 class VolatilityResult:
     """
-    ボラティリティ推定結果
+    繝懊Λ繝・ぅ繝ｪ繝・ぅ謗ｨ螳夂ｵ先棡
 
     Attributes
     ----------
-    volatility          : 推定ボラティリティ（年率）
-    method              : 推定手法名
-    confidence          : 推定の信頼度 [0, 1]
-    confidence_interval : (下限, 上限) の 95% 信頼区間
-    details             : 追加情報
+    volatility          : 謗ｨ螳壹・繝ｩ繝・ぅ繝ｪ繝・ぅ・亥ｹｴ邇・ｼ・    method              : 謗ｨ螳壽焔豕募錐
+    confidence          : 謗ｨ螳壹・菫｡鬆ｼ蠎ｦ [0, 1]
+    confidence_interval : (荳矩剞, 荳企剞) 縺ｮ 95% 菫｡鬆ｼ蛹ｺ髢・    details             : 霑ｽ蜉諠・ｱ
     """
     volatility: float
     method: str
@@ -75,7 +73,7 @@ class VolatilityResult:
 
 @dataclass
 class PeerData:
-    """ピアカンパニーの個別データ"""
+    """繝斐い繧ｫ繝ｳ繝代ル繝ｼ縺ｮ蛟句挨繝・・繧ｿ"""
     ticker: str
     volatility: float
     success: bool = True
@@ -86,16 +84,14 @@ class PeerData:
 @dataclass
 class PeerVolatilitySummary:
     """
-    ピアカンパニー群のボラティリティサマリー
+    繝斐い繧ｫ繝ｳ繝代ル繝ｼ鄒､縺ｮ繝懊Λ繝・ぅ繝ｪ繝・ぅ繧ｵ繝槭Μ繝ｼ
 
     Attributes
     ----------
-    tickers           : 処理対象ティッカーリスト
-    mean_volatility   : 成功ティッカーの平均ボラティリティ
-    median_volatility : 成功ティッカーの中央値ボラティリティ
-    std_volatility    : 成功ティッカーの標準偏差
-    failed_tickers    : 取得失敗ティッカーのリスト
-    peers             : 全ピアデータ
+    tickers           : 蜃ｦ逅・ｯｾ雎｡繝・ぅ繝・き繝ｼ繝ｪ繧ｹ繝・    mean_volatility   : 謌仙粥繝・ぅ繝・き繝ｼ縺ｮ蟷ｳ蝮・・繝ｩ繝・ぅ繝ｪ繝・ぅ
+    median_volatility : 謌仙粥繝・ぅ繝・き繝ｼ縺ｮ荳ｭ螟ｮ蛟､繝懊Λ繝・ぅ繝ｪ繝・ぅ
+    std_volatility    : 謌仙粥繝・ぅ繝・き繝ｼ縺ｮ讓呎ｺ門￥蟾ｮ
+    failed_tickers    : 蜿門ｾ怜､ｱ謨励ユ繧｣繝・き繝ｼ縺ｮ繝ｪ繧ｹ繝・    peers             : 蜈ｨ繝斐い繝・・繧ｿ
     """
     tickers: list[str] = field(default_factory=list)
     mean_volatility: float = 0.0
@@ -133,32 +129,28 @@ class PeerVolatilitySummary:
 # ============================================================
 class VolatilityEstimator:
     """
-    非上場企業向けボラティリティ推定クラス
+    髱樔ｸ雁ｴ莨∵･ｭ蜷代￠繝懊Λ繝・ぅ繝ｪ繝・ぅ謗ｨ螳壹け繝ｩ繧ｹ
 
     Parameters
     ----------
     industry : str
-        業種コード (INDUSTRY_VOLATILITY のキー)。省略時は 'default'。
-    """
+        讌ｭ遞ｮ繧ｳ繝ｼ繝・(INDUSTRY_VOLATILITY 縺ｮ繧ｭ繝ｼ)縲ら怐逡･譎ゅ・ 'default'縲・    """
 
     def __init__(self, industry: str = "default"):
         self.industry = (industry or "default").lower()
         self._last_historical_result: Optional[VolatilityResult] = None
 
     # ----------------------------------------------------------
-    # 内部: リターン列の計算
-    # ----------------------------------------------------------
+    # 蜀・Κ: 繝ｪ繧ｿ繝ｼ繝ｳ蛻励・險育ｮ・    # ----------------------------------------------------------
     @staticmethod
     def _compute_log_returns(
         arr: np.ndarray,
         is_returns: bool,
     ) -> np.ndarray:
         """
-        価格列またはリターン列から対数リターン配列を返す。
-
-        自動判定:
-          全要素の絶対値 < 0.5 かつ 正負混在 → リターン列と見なす
-        """
+        萓｡譬ｼ蛻励∪縺溘・繝ｪ繧ｿ繝ｼ繝ｳ蛻励°繧牙ｯｾ謨ｰ繝ｪ繧ｿ繝ｼ繝ｳ驟榊・繧定ｿ斐☆縲・
+        閾ｪ蜍募愛螳・
+          蜈ｨ隕∫ｴ縺ｮ邨ｶ蟇ｾ蛟､ < 0.5 縺九▽ 豁｣雋豺ｷ蝨ｨ 竊・繝ｪ繧ｿ繝ｼ繝ｳ蛻励→隕九↑縺・        """
         if not is_returns:
             if np.all(np.abs(arr) < 0.5) and np.any(arr < 0) and np.any(arr > 0):
                 is_returns = True
@@ -175,7 +167,7 @@ class VolatilityEstimator:
         return log_ret[np.isfinite(log_ret)]
 
     # ----------------------------------------------------------
-    # 1. 過去価格 / リターンからの計算 → float
+    # 1. 驕主悉萓｡譬ｼ / 繝ｪ繧ｿ繝ｼ繝ｳ縺九ｉ縺ｮ險育ｮ・竊・float
     # ----------------------------------------------------------
     def calculate_historical_volatility(
         self,
@@ -185,10 +177,8 @@ class VolatilityEstimator:
         is_returns: bool = False,
     ) -> float:
         """
-        価格列またはリターン列から年率ボラティリティ(float)を計算する。
-
-        詳細な結果が必要な場合は calculate_historical_volatility_result() を使用。
-        """
+        萓｡譬ｼ蛻励∪縺溘・繝ｪ繧ｿ繝ｼ繝ｳ蛻励°繧牙ｹｴ邇・・繝ｩ繝・ぅ繝ｪ繝・ぅ(float)繧定ｨ育ｮ励☆繧九・
+        隧ｳ邏ｰ縺ｪ邨先棡縺悟ｿ・ｦ√↑蝣ｴ蜷医・ calculate_historical_volatility_result() 繧剃ｽｿ逕ｨ縲・        """
         result = self.calculate_historical_volatility_result(
             prices_or_returns,
             annualize=annualize,
@@ -205,8 +195,7 @@ class VolatilityEstimator:
         is_returns: bool = False,
     ) -> VolatilityResult:
         """
-        価格列またはリターン列から VolatilityResult を計算する。
-        """
+        萓｡譬ｼ蛻励∪縺溘・繝ｪ繧ｿ繝ｼ繝ｳ蛻励°繧・VolatilityResult 繧定ｨ育ｮ励☆繧九・        """
         arr     = np.asarray(prices_or_returns, dtype=float)
         log_ret = self._compute_log_returns(arr, is_returns)
 
@@ -219,7 +208,7 @@ class VolatilityEstimator:
         if not np.isfinite(vol) or vol <= 0:
             raise ValueError(f"Computed volatility is invalid: {vol}")
 
-        # 95% 信頼区間 (Chi-square 近似)
+        # 95% 菫｡鬆ｼ蛹ｺ髢・(Chi-square 霑台ｼｼ)
         n = len(log_ret)
         if SCIPY_AVAILABLE and _scipy_stats is not None:
             alpha    = 0.05
@@ -250,14 +239,14 @@ class VolatilityEstimator:
         return result
 
     # ----------------------------------------------------------
-    # 2. 業種ベンチマーク
+    # 2. 讌ｭ遞ｮ繝吶Φ繝√・繝ｼ繧ｯ
     # ----------------------------------------------------------
     def get_industry_volatility(self) -> float:
-        """業種ベンチマークのボラティリティ（スカラー）を返す"""
+        """讌ｭ遞ｮ繝吶Φ繝√・繝ｼ繧ｯ縺ｮ繝懊Λ繝・ぅ繝ｪ繝・ぅ・医せ繧ｫ繝ｩ繝ｼ・峨ｒ霑斐☆"""
         return INDUSTRY_VOLATILITY.get(self.industry, INDUSTRY_VOLATILITY["default"])
 
     def estimate_from_industry(self) -> VolatilityResult:
-        """業種ベンチマークから VolatilityResult を返す"""
+        """讌ｭ遞ｮ繝吶Φ繝√・繝ｼ繧ｯ縺九ｉ VolatilityResult 繧定ｿ斐☆"""
         vol  = self.get_industry_volatility()
         half = vol * 0.2
         return VolatilityResult(
@@ -269,7 +258,7 @@ class VolatilityEstimator:
         )
 
     # ----------------------------------------------------------
-    # 3. 手動入力 / フォールバック → float
+    # 3. 謇句虚蜈･蜉・/ 繝輔か繝ｼ繝ｫ繝舌ャ繧ｯ 竊・float
     # ----------------------------------------------------------
     def estimate(
         self,
@@ -278,9 +267,8 @@ class VolatilityEstimator:
         historical_data: Optional[list[float]] = None,
     ) -> float:
         """
-        推定ボラティリティ（スカラー）を返す。
-
-        優先順位: manual_vol > historical_data > peer_tickers > industry
+        謗ｨ螳壹・繝ｩ繝・ぅ繝ｪ繝・ぅ・医せ繧ｫ繝ｩ繝ｼ・峨ｒ霑斐☆縲・
+        蜆ｪ蜈磯・ｽ・ manual_vol > historical_data > peer_tickers > industry
         """
         if manual_vol is not None:
             return float(manual_vol)
@@ -296,28 +284,25 @@ class VolatilityEstimator:
         return self.get_industry_volatility()
 
     # ----------------------------------------------------------
-    # 4. バリデーション
+    # 4. 繝舌Μ繝・・繧ｷ繝ｧ繝ｳ
     # ----------------------------------------------------------
     @staticmethod
     def validate_volatility(vol: float) -> bool:
-        """ボラティリティが妥当な範囲 (0, 5] かどうかを検証する"""
+        """繝懊Λ繝・ぅ繝ｪ繝・ぅ縺悟ｦ･蠖薙↑遽・峇 (0, 5] 縺九←縺・°繧呈､懆ｨｼ縺吶ｋ"""
         return 0.0 < vol <= 5.0
 
     # ----------------------------------------------------------
-    # 5. ピアカンパニーからの推定
-    # ----------------------------------------------------------
+    # 5. 繝斐い繧ｫ繝ｳ繝代ル繝ｼ縺九ｉ縺ｮ謗ｨ螳・    # ----------------------------------------------------------
     def fetch_peer_volatility(
         self,
         peer_tickers: list[str],
         period: str = "1y",
     ) -> PeerVolatilitySummary:
         """
-        ピアカンパニーの株価データからボラティリティを推定する。
-
+        繝斐い繧ｫ繝ｳ繝代ル繝ｼ縺ｮ譬ｪ萓｡繝・・繧ｿ縺九ｉ繝懊Λ繝・ぅ繝ｪ繝・ぅ繧呈耳螳壹☆繧九・
         Parameters
         ----------
-        peer_tickers : ティッカーシンボルのリスト
-        period       : yfinance の期間文字列
+        peer_tickers : 繝・ぅ繝・き繝ｼ繧ｷ繝ｳ繝懊Ν縺ｮ繝ｪ繧ｹ繝・        period       : yfinance 縺ｮ譛滄俣譁・ｭ怜・
         """
         peers: list[PeerData] = []
 
@@ -338,11 +323,11 @@ class VolatilityEstimator:
         peer_tickers: list[str],
         period: str = "1y",
     ) -> PeerVolatilitySummary:
-        """fetch_peer_volatility の別名"""
+        """fetch_peer_volatility 縺ｮ蛻･蜷・""
         return self.fetch_peer_volatility(peer_tickers, period)
 
     def _fetch_single_volatility(self, ticker: str, period: str) -> float:
-        """単一ティッカーの年率ボラティリティを取得する（内部用）"""
+        """蜊倅ｸ繝・ぅ繝・き繝ｼ縺ｮ蟷ｴ邇・・繝ｩ繝・ぅ繝ｪ繝・ぅ繧貞叙蠕励☆繧具ｼ亥・驛ｨ逕ｨ・・""
         if not YFINANCE_AVAILABLE or yf is None:
             raise ImportError("yfinance is not installed")
 
@@ -360,7 +345,7 @@ class VolatilityEstimator:
         return float(np.std(log_ret, ddof=1) * np.sqrt(252))
 
     def _fetch_company_name(self, ticker: str) -> str:
-        """yfinance から企業名を取得する（取得失敗時は空文字列）"""
+        """yfinance 縺九ｉ莨∵･ｭ蜷阪ｒ蜿門ｾ励☆繧具ｼ亥叙蠕怜､ｱ謨玲凾縺ｯ遨ｺ譁・ｭ怜・・・""
         try:
             if not YFINANCE_AVAILABLE or yf is None:
                 return ""
@@ -370,8 +355,7 @@ class VolatilityEstimator:
             return ""
 
     # ----------------------------------------------------------
-    # 6. 複合推定
-    # ----------------------------------------------------------
+    # 6. 隍・粋謗ｨ螳・    # ----------------------------------------------------------
     def estimate_combined(
         self,
         peer_tickers: Optional[list[str]] = None,
@@ -380,7 +364,7 @@ class VolatilityEstimator:
         historical_weight: float = 0.3,
         industry_weight: float = 0.2,
     ) -> VolatilityResult:
-        """複数手法を組み合わせてボラティリティを推定する"""
+        """隍・焚謇区ｳ輔ｒ邨・∩蜷医ｏ縺帙※繝懊Λ繝・ぅ繝ｪ繝・ぅ繧呈耳螳壹☆繧・""
         estimates: list[tuple[float, float]] = []
 
         industry_vol = self.get_industry_volatility()

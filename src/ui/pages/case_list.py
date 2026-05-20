@@ -1,118 +1,105 @@
-"""
-src/ui/pages/case_list.py - 評価ケース一覧ページ
-"""
+﻿# -*- coding: utf-8 -*-
+# src/ui/pages/case_list.py
 from __future__ import annotations
-
 import streamlit as st
-from sqlalchemy import func, select
+import pandas as pd
+from src.services.valuation_service import ValuationService
 
-from src.data.database import get_session
-from src.data.models import ValuationCase, ComparableTicker
-
-
-def _search_cases(keyword: str) -> list[dict]:
-    """キーワードで評価ケースを検索"""
-    with get_session() as session:
-        stmt = (
-            select(ValuationCase)
-            .order_by(ValuationCase.created_at.desc())
-        )
-        if keyword:
-            stmt = stmt.where(
-                ValuationCase.case_name.ilike(f"%{keyword}%")
-            )
-        rows = session.scalars(stmt).all()
-        return [
-            {
-                "id":         vc.id,
-                "case_name":  vc.case_name,
-                "created_at": vc.created_at,
-                "updated_at": vc.updated_at,
-            }
-            for vc in rows
-        ]
+_svc = ValuationService()
 
 
-def _delete_case(case_id: int) -> None:
-    """ケースを物理削除"""
-    with get_session() as session:
-        vc = session.get(ValuationCase, case_id)
-        if vc:
-            session.delete(vc)
-            session.commit()
+def _open_detail(case_id: int) -> None:
+    """詳細ページへ遷移するヘルパー"""
+    st.session_state["detail_case_id"] = case_id
+    st.session_state["current_page"]   = "case_detail"  # ✅ 修正
+    st.rerun()
+
+
+def show() -> None:
+    st.title("📋 ケース一覧")
+
+    # ── 全ケース取得（作成日時降順）────────────────────────────
+    cases = _svc.get_all_cases()
+
+    # ── ヘッダー行 ────────────────────────────────────────────
+    col_title, col_refresh = st.columns([5, 1])
+    with col_title:
+        st.markdown(f"登録ケース数: **{len(cases)}** 件")
+    with col_refresh:
+        if st.button("🔄 更新", use_container_width=True):
+            st.rerun()
+
+    st.markdown("---")
+
+    if not cases:
+        st.info("ケースがありません。「➕ 新規評価」から作成してください。")
+        return
+
+    # ── ケース一覧テーブル ─────────────────────────────────────
+    summary_rows = []
+    for c in cases:
+        weighted = c.get("weighted_price")
+        bs       = c.get("bs_price")
+        summary_rows.append({
+            "ID":           c["id"],
+            "ケース名":     c["case_name"],
+            "加重平均価格": f"{weighted:.4f}" if weighted is not None else "未計算",
+            "BS価格":       f"{bs:.4f}"       if bs       is not None else "未計算",
+            "オプション種類": c.get("option_type", ""),
+            "株価 S":       f"{c.get('stock_price', 0):.1f}",
+            "行使価格 K":   f"{c.get('strike_price', 0):.1f}",
+            "作成日時":     str(c.get("created_at", "")),
+        })
+
+    df = pd.DataFrame(summary_rows)
+    st.dataframe(
+        df.drop(columns=["ID"]),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    st.markdown("---")
+
+    # ── 詳細ボタン（カード形式）───────────────────────────────
+    st.markdown("### ケース詳細を開く")
+
+    for c in cases:
+        with st.container():
+            c1, c2, c3, c4, c5 = st.columns([3, 2, 2, 2, 1])
+
+            with c1:
+                st.markdown(f"**{c['case_name']}**")
+                st.caption(f"作成: {c.get('created_at', '')}")
+
+            with c2:
+                wp = c.get("weighted_price")
+                st.metric(
+                    "加重平均価格",
+                    f"{wp:.2f}" if wp is not None else "N/A",
+                )
+
+            with c3:
+                bs = c.get("bs_price")
+                st.metric(
+                    "BS価格",
+                    f"{bs:.2f}" if bs is not None else "N/A",
+                )
+
+            with c4:
+                st.caption(f"種類: {c.get('option_type','')}")
+                st.caption(f"S={c.get('stock_price',0):.1f}  K={c.get('strike_price',0):.1f}")
+
+            with c5:
+                if st.button(
+                    "📂 詳細",
+                    key=f"open_{c['id']}",
+                    use_container_width=True,
+                    type="primary",
+                ):
+                    _open_detail(c["id"])
+
+            st.divider()
 
 
 def render() -> None:
-    st.title("📋 ケース一覧")
-
-    # 検索バー
-    keyword = st.text_input("🔍 ケース名で検索", placeholder="例: ABC社")
-
-    try:
-        cases = _search_cases(keyword)
-    except Exception as e:
-        st.error(f"データ取得エラー: {e}")
-        return
-
-    # サマリーメトリクス
-    try:
-        with get_session() as session:
-            total_cases: int = session.scalar(
-                select(func.count(ValuationCase.id))
-            ) or 0
-            total_tickers: int = session.scalar(
-                select(func.count(ComparableTicker.id))
-            ) or 0
-    except Exception:
-        total_cases = len(cases)
-        total_tickers = 0
-
-    col1, col2 = st.columns(2)
-    col1.metric("📁 総ケース数", total_cases)
-    col2.metric("📊 比較ティッカー数", total_tickers)
-
-    st.divider()
-
-    if not cases:
-        st.info("評価ケースが見つかりません。")
-        return
-
-    # selected_case_id が session_state にある場合は詳細へ
-    if "selected_case_id" in st.session_state:
-        selected_id = st.session_state.pop("selected_case_id")
-        st.session_state["detail_case_id"] = selected_id
-
-    # 詳細表示中
-    if "detail_case_id" in st.session_state:
-        from src.ui.pages import case_detail
-        case_detail.render(st.session_state["detail_case_id"])
-        if st.button("← 一覧に戻る"):
-            del st.session_state["detail_case_id"]
-            st.rerun()
-        return
-
-    # 一覧表示
-    for case in cases:
-        with st.container(border=True):
-            col_a, col_b, col_c, col_d = st.columns([4, 2, 1, 1])
-
-            col_a.markdown(f"**{case['case_name']}**")
-
-            created = case["created_at"]
-            updated = case["updated_at"]
-            col_b.caption(
-                f"作成: {created.strftime('%Y-%m-%d') if created else '-'}  \n"
-                f"更新: {updated.strftime('%Y-%m-%d') if updated else '-'}"
-            )
-
-            with col_c:
-                if st.button("詳細", key=f"list_detail_{case['id']}"):
-                    st.session_state["detail_case_id"] = case["id"]
-                    st.rerun()
-
-            with col_d:
-                if st.button("🗑️", key=f"list_del_{case['id']}",
-                             help="このケースを削除"):
-                    _delete_case(case["id"])
-                    st.success("削除しました")
-                    st.rerun()
+    show()

@@ -1,4 +1,4 @@
-import numpy as np
+﻿import numpy as np
 from scipy.stats import norm
 from dataclasses import dataclass
 from typing import Optional, Tuple
@@ -6,7 +6,7 @@ from typing import Optional, Tuple
 
 @dataclass
 class MonteCarloResult:
-    """モンテカルロシミュレーション結果"""
+    """繝｢繝ｳ繝・き繝ｫ繝ｭ繧ｷ繝溘Η繝ｬ繝ｼ繧ｷ繝ｧ繝ｳ邨先棡"""
     price: float
     std_error: float
     confidence_interval: Tuple[float, float]
@@ -14,7 +14,7 @@ class MonteCarloResult:
 
 
 class MonteCarloModel:
-    """モンテカルロ法によるオプション価格計算"""
+    """繝｢繝ｳ繝・き繝ｫ繝ｭ豕輔↓繧医ｋ繧ｪ繝励す繝ｧ繝ｳ萓｡譬ｼ險育ｮ・""
 
     def __init__(
         self,
@@ -63,13 +63,13 @@ class MonteCarloModel:
         sigma = sigma if sigma is not None else self._sigma
 
         if any(v is None for v in [S, K, T, r, sigma]):
-            raise ValueError("S, K, T, r, sigma はすべて必要です")
+            raise ValueError("S, K, T, r, sigma 縺ｯ縺吶∋縺ｦ蠢・ｦ√〒縺・)
 
         option_type = option_type or self._option_type
 
         if option_type.lower() not in ("call", "put"):
             raise ValueError(
-                f"option_type は 'call' または 'put' が必要です: {option_type}"
+                f"option_type 縺ｯ 'call' 縺ｾ縺溘・ 'put' 縺悟ｿ・ｦ√〒縺・ {option_type}"
             )
 
         if self.random_seed is not None:

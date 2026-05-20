@@ -1,17 +1,23 @@
 # Python
 __pycache__/
-*.pyc
+*.py[cod]
 *.pyo
-.venv/
+*.pyd
 *.egg-info/
 
-# データベース
-*.db
-*.sqlite3
+# venv
+.venv/
+venv/
+env/
 
-# 環境変数
+# Database
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+
+# Env vars
 .env
-secrets.toml
+.env.local
 
 # Streamlit
 .streamlit/secrets.toml
@@ -19,9 +25,36 @@ secrets.toml
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
 
-# Utility scripts (not for deployment)
+# IDE
+.vscode/
+.idea/
+
+# Test
+.pytest_cache/
+.coverage
+
+# Backup
+*.bak
+
+# Local scripts
 write_case_detail.py
-fix*.py
-check_auth.py
+write_service.py
 write_auth.py
+fix*.py
+check*.py
+diag*.py
+diagnose.py
+debug_state.py
+test_state.py
+search_test.py
+seed.py
+make_detail.py
+
+# Legacy
+src/storage.py
+
+# Data files
+cases_data.json
+*.log
