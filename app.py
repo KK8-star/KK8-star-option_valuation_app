@@ -1,4 +1,4 @@
-﻿# app.py  ── 全文
+# app.py  ── 全文
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ def main() -> None:
         # ロゴ
         logo_path = Path("assets/logo.png")
         if logo_path.exists():
-            st.image(str(logo_path), use_container_width=True)
+            st.image(str(logo_path), use_column_width=True)
         else:
             st.markdown("## 📊 オプション評価")
 
