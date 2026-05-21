@@ -1,4 +1,3 @@
-# app.py  ── 全文
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
@@ -6,7 +5,55 @@ import streamlit as st
 from pathlib import Path
 
 
+# ── ログイン設定 ───────────────────────────────────────────────────────
+LOGIN_USERS = {
+    "admin": "kazama2024",
+    "user1": "option2024",
+}
+
+
+def show_login_page() -> None:
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        logo_path = Path("assets/logo.png")
+        if logo_path.exists():
+            st.image(str(logo_path), use_column_width=True)
+        else:
+            st.markdown("## 📊 オプション評価")
+
+        st.markdown("### ログイン")
+        st.markdown("---")
+
+        username = st.text_input("ユーザー名", placeholder="ユーザー名を入力")
+        password = st.text_input("パスワード", type="password", placeholder="パスワードを入力")
+
+        if st.button("ログイン", use_container_width=True, type="primary"):
+            if username in LOGIN_USERS and LOGIN_USERS[username] == password:
+                st.session_state["logged_in"] = True
+                st.session_state["username"] = username
+                st.rerun()
+            else:
+                st.error("ユーザー名またはパスワードが正しくありません")
+
+        st.markdown("---")
+        st.caption("© kazama.cpa office & Marleight LLC")
+
+
 def main() -> None:
+
+    # ── ログインチェック ───────────────────────────────────────────────
+    if "logged_in" not in st.session_state:
+        st.session_state["logged_in"] = False
+
+    if not st.session_state["logged_in"]:
+        st.set_page_config(
+            page_title="オプション評価アプリ - ログイン",
+            page_icon="📊",
+            layout="centered",
+        )
+        show_login_page()
+        return
+
     st.set_page_config(
         page_title="オプション評価アプリ",
         page_icon="📊",
@@ -29,7 +76,6 @@ def main() -> None:
     # ── サイドバー ─────────────────────────────────────────────────────
     with st.sidebar:
 
-        # ロゴ
         logo_path = Path("assets/logo.png")
         if logo_path.exists():
             st.image(str(logo_path), use_column_width=True)
@@ -38,7 +84,6 @@ def main() -> None:
 
         st.markdown("---")
 
-        # ナビゲーション
         nav_items = {
             "🏠 ホーム":     "home",
             "➕ 新規評価":   "new_valuation",
@@ -64,9 +109,17 @@ def main() -> None:
         st.caption(f"現在: {page_labels.get(current, current)}")
 
         st.markdown("---")
+
+        username = st.session_state.get("username", "")
+        st.caption(f"👤 {username}")
+        if st.button("🚪 ログアウト", use_container_width=True):
+            st.session_state["logged_in"] = False
+            st.session_state["username"] = ""
+            st.rerun()
+
+        st.markdown("---")
         st.caption("v0.8 · SQLite WAL")
 
-        # コピーライト（最下部に固定）
         st.markdown(
             """
             <div style='
