@@ -38,7 +38,7 @@ def show_login_page() -> None:
                 st.error("ユーザー名またはパスワードが正しくありません")
 
         st.markdown("---")
-        st.caption("© kazama.cpa office & Marleight LLC")
+        st.caption("© kazama.cpa office & Marleight LLC.,All Rights Reserved.")
 
 
 def main() -> None:
@@ -128,7 +128,7 @@ def main() -> None:
             st.rerun()
 
         st.markdown("---")
-        st.caption("v0.8 · SQLite WAL")
+        st.caption("v1.0")
 
         st.markdown(
             """
@@ -142,7 +142,7 @@ def main() -> None:
                 color: #888;
                 line-height: 1.4;
             '>
-            © kazama.cpa office &amp; Marleight LLC,<br>All Rights Reserved
+            © kazama.cpa office &amp; Marleight LLC.,All Rights Reserved.
             </div>
             """,
             unsafe_allow_html=True,
