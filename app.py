@@ -5,7 +5,9 @@ import streamlit as st
 from pathlib import Path
 
 
-# ── ログイン設定 ───────────────────────────────────────────────────────
+# ====================================================
+# ログイン設定
+# ====================================================
 LOGIN_USERS = {
     "admin": "kazama2024",
     "user1": "option2024",
@@ -17,9 +19,9 @@ def show_login_page() -> None:
     with col2:
         logo_path = Path("assets/logo.png")
         if logo_path.exists():
-            st.image(str(logo_path), use_column_width=True)
+            st.image(str(logo_path), use_container_width=True)
         else:
-            st.markdown("## 📊 オプション評価")
+            st.markdown("... オプション評価")
 
         st.markdown("### ログイン")
         st.markdown("---")
@@ -41,7 +43,9 @@ def show_login_page() -> None:
 
 def main() -> None:
 
-    # ── ログインチェック ───────────────────────────────────────────────
+    # ====================================================
+    # ログインチェック
+    # ====================================================
     if "logged_in" not in st.session_state:
         st.session_state["logged_in"] = False
 
@@ -61,33 +65,39 @@ def main() -> None:
         initial_sidebar_state="expanded",
     )
 
-    # ── DB初期化（初回のみ） ───────────────────────────────────────────
+    # ====================================================
+    # DB初期化（初回のみ）
+    # ====================================================
     if "db_initialized" not in st.session_state:
         from src.data.database import get_db_manager
         get_db_manager()
         st.session_state["db_initialized"] = True
 
-    # ── セッション初期化 ───────────────────────────────────────────────
+    # ====================================================
+    # セッション初期化
+    # ====================================================
     if "current_page" not in st.session_state:
         st.session_state["current_page"] = "home"
     if "detail_case_id" not in st.session_state:
         st.session_state["detail_case_id"] = None
 
-    # ── サイドバー ─────────────────────────────────────────────────────
+    # ====================================================
+    # サイドバー
+    # ====================================================
     with st.sidebar:
 
         logo_path = Path("assets/logo.png")
         if logo_path.exists():
-            st.image(str(logo_path), use_column_width=True)
+            st.image(str(logo_path), use_container_width=True)
         else:
-            st.markdown("## 📊 オプション評価")
+            st.markdown("... オプション評価")
 
         st.markdown("---")
 
         nav_items = {
-            "🏠 ホーム":     "home",
-            "➕ 新規評価":   "new_valuation",
-            "📋 ケース一覧": "case_list",
+            "ホーム":       "home",
+            "新規評価":     "new_valuation",
+            "ケース一覧":   "case_list",
         }
 
         for label, page_key in nav_items.items():
@@ -100,10 +110,10 @@ def main() -> None:
         st.markdown("---")
 
         page_labels = {
-            "home":          "🏠 ホーム",
-            "new_valuation": "➕ 新規評価",
-            "case_list":     "📋 ケース一覧",
-            "case_detail":   "🔍 ケース詳細",
+            "home":          "ホーム",
+            "new_valuation": "新規評価",
+            "case_list":     "ケース一覧",
+            "case_detail":   "ケース詳細",
         }
         current = st.session_state["current_page"]
         st.caption(f"現在: {page_labels.get(current, current)}")
@@ -111,8 +121,8 @@ def main() -> None:
         st.markdown("---")
 
         username = st.session_state.get("username", "")
-        st.caption(f"👤 {username}")
-        if st.button("🚪 ログアウト", use_container_width=True):
+        st.caption(f"ユーザー: {username}")
+        if st.button("ログアウト", use_container_width=True):
             st.session_state["logged_in"] = False
             st.session_state["username"] = ""
             st.rerun()
@@ -138,7 +148,9 @@ def main() -> None:
             unsafe_allow_html=True,
         )
 
-    # ── ページルーティング ─────────────────────────────────────────────
+    # ====================================================
+    # ページルーティング
+    # ====================================================
     page = st.session_state["current_page"]
 
     if page == "home":
@@ -161,7 +173,7 @@ def main() -> None:
         show()
 
     else:
-        st.error(f"不明なページ: {page}")
+        st.warning(f"不明なページ: {page}")
         st.session_state["current_page"] = "home"
         st.rerun()
 
