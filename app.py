@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 from __future__ import annotations
 
 import streamlit as st
@@ -9,8 +9,8 @@ from pathlib import Path
 # ログイン設定
 # ====================================================
 LOGIN_USERS = {
-    "admin": "kazama2024",
-    "user1": "option2024",
+    "admin": "kazama2026",
+    "kkj": "kkj123",
 }
 
 
@@ -180,3 +180,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
