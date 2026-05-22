@@ -8,10 +8,7 @@ from pathlib import Path
 # ====================================================
 # ログイン設定
 # ====================================================
-LOGIN_USERS = {
-    "admin": "kazama2026",
-    "kkj": "kkj123",
-}
+LOGIN_USERS = dict(st.secrets.get("users", {}))
 
 
 def show_login_page() -> None:
@@ -180,4 +177,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
 
