@@ -1,80 +1,121 @@
-﻿"""
-リポジトリパターンによるデータアクセス層
-ビジネスロジックとDB操作を分離
+# src/data/repository.py
+"""
+Repository pattern - data access layer
 """
 
 from typing import Optional
-from datetime import datetime
 from sqlalchemy.orm import Session
-from sqlalchemy import select, update
+from sqlalchemy import select
 
-from src.data.models import ValuationCase, ValuationParameter, ValuationResult
+from src.data.models import ValuationCase, ComparableTicker
 
 
-# ─────────────────────────────────────────
-# 評価案件リポジトリ
-# ─────────────────────────────────────────
 class ValuationCaseRepository:
-    """ValuationCase CRUD操作"""
+    """ValuationCase CRUD operations"""
 
     def __init__(self, session: Session):
         self.session = session
 
+    # ?? Create ??????????????????????????????
     def create(
         self,
-        name: str,
-        company: str,
-        industry: str = None,
-        stage: str = None,
-        description: str = None,
+        case_name: str,
+        stock_price: float,
+        strike_price: float,
+        risk_free_rate: float,
+        volatility: float,
+        time_to_expiry: float,
+        option_type: str = "call",
+        dividend_yield: float = 0.0,
+        binomial_steps: int = 100,
+        mc_simulations: int = 10000,
     ) -> ValuationCase:
         case = ValuationCase(
-            name=name,
-            company=company,
-            industry=industry,
-            stage=stage,
-            description=description,
+            case_name=case_name,
+            stock_price=stock_price,
+            strike_price=strike_price,
+            risk_free_rate=risk_free_rate,
+            volatility=volatility,
+            time_to_expiry=time_to_expiry,
+            option_type=option_type,
+            dividend_yield=dividend_yield,
+            binomial_steps=binomial_steps,
+            mc_simulations=mc_simulations,
         )
         self.session.add(case)
-        self.session.flush()   # IDを確定させる（commitは呼び出し元）
+        self.session.flush()
         return case
 
+    # ?? Read ????????????????????????????????
     def get_by_id(self, case_id: int) -> Optional[ValuationCase]:
         return self.session.get(ValuationCase, case_id)
 
-    def get_all_active(self) -> list[ValuationCase]:
+    def get_all(self) -> list:
         stmt = (
             select(ValuationCase)
-            .where(ValuationCase.is_active == True)
             .order_by(ValuationCase.created_at.desc())
         )
         return list(self.session.scalars(stmt))
 
-    def soft_delete(self, case_id: int) -> bool:
-        case = self.get_by_id(case_id)
-        if case is None:
-            return False
-        case.is_active = False
-        case.updated_at = datetime.utcnow()
-        return True
 
-    def update(self, case_id: int, **kwargs) -> Optional[ValuationCase]:
+    def get_by_id_as_dict(self, case_id: int) -> Optional[dict]:
+        """???????????????dict?????"""
+        case = self.session.get(ValuationCase, case_id)
+        if case is None:
+            return None
+        return {
+            "id":             case.id,
+            "case_name":      case.case_name,
+            "stock_price":    case.stock_price,
+            "strike_price":   case.strike_price,
+            "risk_free_rate": case.risk_free_rate,
+            "volatility":     case.volatility,
+            "time_to_expiry": case.time_to_expiry,
+            "option_type":    case.option_type,
+            "dividend_yield": case.dividend_yield,
+            "binomial_steps": case.binomial_steps,
+            "mc_simulations": case.mc_simulations,
+            "bs_price":       case.bs_price,
+            "binomial_price": case.binomial_price,
+            "mc_price":       case.mc_price,
+            "weighted_price": case.weighted_price,
+            "delta":          case.delta,
+            "gamma":          case.gamma,
+            "theta":          case.theta,
+            "vega":           case.vega,
+            "rho":            case.rho,
+            "created_at":     case.created_at,
+            "updated_at":     case.updated_at,
+        }
+
+    # ?? Update ??????????????????????????????
+    def update(self, case_id: int, data: dict) -> Optional[ValuationCase]:
         case = self.get_by_id(case_id)
         if case is None:
             return None
-        allowed = {"name", "company", "industry", "stage", "description"}
-        for key, value in kwargs.items():
+        allowed = {
+            "case_name", "stock_price", "strike_price", "risk_free_rate",
+            "volatility", "time_to_expiry", "option_type", "dividend_yield",
+            "binomial_steps", "mc_simulations",
+            "bs_price", "binomial_price", "mc_price", "weighted_price",
+            "delta", "gamma", "theta", "vega", "rho",
+        }
+        for key, value in data.items():
             if key in allowed:
                 setattr(case, key, value)
-        case.updated_at = datetime.utcnow()
         return case
 
+    # ?? Delete ??????????????????????????????
+    def delete(self, case_id: int) -> bool:
+        case = self.get_by_id(case_id)
+        if case is None:
+            return False
+        self.session.delete(case)
+        return True
 
-# ─────────────────────────────────────────
-# パラメータリポジトリ
-# ─────────────────────────────────────────
-class ValuationParameterRepository:
-    """ValuationParameter CRUD操作"""
+
+class ComparableTickerRepository:
+    """ComparableTicker CRUD operations"""
 
     def __init__(self, session: Session):
         self.session = session
@@ -82,93 +123,36 @@ class ValuationParameterRepository:
     def create(
         self,
         case_id: int,
-        stock_price: float,
-        strike_price: float,
-        time_to_expiry: float,
-        risk_free_rate: float,
+        ticker: str,
         volatility: float,
-        dividend_yield: float = 0.0,
-        vol_method: str = None,
-        vol_params: dict = None,
-    ) -> ValuationParameter:
-        param = ValuationParameter(
+        company_label: str = "",
+        vol_period: str = "1y",
+        fetch_ok: bool = True,
+        error_msg: str = "",
+    ) -> ComparableTicker:
+        row = ComparableTicker(
             case_id=case_id,
-            stock_price=stock_price,
-            strike_price=strike_price,
-            time_to_expiry=time_to_expiry,
-            risk_free_rate=risk_free_rate,
+            ticker=ticker,
             volatility=volatility,
-            dividend_yield=dividend_yield,
-            vol_method=vol_method,
-            vol_params=vol_params or {},
+            company_label=company_label,
+            vol_period=vol_period,
+            fetch_ok=fetch_ok,
+            error_msg=error_msg,
         )
-        self.session.add(param)
+        self.session.add(row)
         self.session.flush()
-        return param
+        return row
 
-    def get_by_case(self, case_id: int) -> list[ValuationParameter]:
+    def get_by_case(self, case_id: int) -> list:
         stmt = (
-            select(ValuationParameter)
-            .where(ValuationParameter.case_id == case_id)
-            .order_by(ValuationParameter.created_at.desc())
+            select(ComparableTicker)
+            .where(ComparableTicker.case_id == case_id)
+            .order_by(ComparableTicker.id)
         )
         return list(self.session.scalars(stmt))
 
-    def get_latest_by_case(self, case_id: int) -> Optional[ValuationParameter]:
-        results = self.get_by_case(case_id)
-        return results[0] if results else None
-
-
-# ─────────────────────────────────────────
-# 結果リポジトリ
-# ─────────────────────────────────────────
-class ValuationResultRepository:
-    """ValuationResult CRUD操作"""
-
-    def __init__(self, session: Session):
-        self.session = session
-
-    def create(
-        self,
-        case_id: int,
-        model: str,
-        option_type: str,
-        option_style: str,
-        option_price: float,
-        parameter_id: int = None,
-        delta: float = None,
-        gamma: float = None,
-        theta: float = None,
-        vega: float = None,
-        rho: float = None,
-        notes: str = None,
-    ) -> ValuationResult:
-        result = ValuationResult(
-            case_id=case_id,
-            parameter_id=parameter_id,
-            model=model,
-            option_type=option_type,
-            option_style=option_style,
-            option_price=option_price,
-            delta=delta,
-            gamma=gamma,
-            theta=theta,
-            vega=vega,
-            rho=rho,
-            notes=notes,
-        )
-        self.session.add(result)
-        self.session.flush()
-        return result
-
-    def get_by_case(self, case_id: int) -> list[ValuationResult]:
-        stmt = (
-            select(ValuationResult)
-            .where(ValuationResult.case_id == case_id)
-            .order_by(ValuationResult.created_at.desc())
-        )
-        return list(self.session.scalars(stmt))
-
-    def get_latest_by_case(self, case_id: int) -> Optional[ValuationResult]:
-        results = self.get_by_case(case_id)
-        return results[0] if results else None
+    def delete_by_case(self, case_id: int) -> int:
+        rows = self.get_by_case(case_id)
+        for row in rows:
+            self.session.delete(row)
+        return len(rows)

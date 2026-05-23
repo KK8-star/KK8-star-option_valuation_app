@@ -1,522 +1,329 @@
-﻿# -*- coding: utf-8 -*-
-# src/ui/pages/case_detail.py
-from __future__ import annotations
 import streamlit as st
 import numpy as np
-import plotly.graph_objects as go
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import yfinance as yf
+import time
+import random
 import pandas as pd
-from src.services.valuation_service import ValuationService, ValuationParams
+from dataclasses import dataclass
+from typing import Optional
+from scipy.stats import norm
 
-_svc = ValuationService()
+@dataclass
+class ComparableTickerRow:
+    ticker: str
+    name: str
+    volatility: Optional[float]
+    current_price: Optional[float]
+    error: Optional[str]
 
-
-def _fmt(v, fmt=".4f"):
-    """None セーフなフォーマッタ"""
-    if v is None:
-        return "N/A"
-    try:
-        return format(float(v), fmt)
-    except (TypeError, ValueError):
-        return str(v)
-
-
-def _sensitivity_chart(case: dict) -> go.Figure:
-    """株価 vs BS価格の感応度チャート"""
-    S0    = float(case["stock_price"])
-    K     = float(case["strike_price"])
-    r     = float(case["risk_free_rate"])
-    sigma = float(case["volatility"])
-    T     = float(case["time_to_expiry"])
-    q     = float(case.get("dividend_yield") or 0.0)
-    otype = case.get("option_type", "call")
-
-    s_range = np.linspace(S0 * 0.5, S0 * 1.5, 60)
-    prices  = []
-    for s in s_range:
-        p = ValuationParams(
-            case_name="tmp", stock_price=s, strike_price=K,
-            risk_free_rate=r, volatility=sigma, time_to_expiry=T,
-            option_type=otype, dividend_yield=q,
-            binomial_steps=50, mc_simulations=1000,
-        )
-        res = _svc.calculate(p)
-        prices.append(res.bs_price)
-
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=s_range, y=prices,
-        mode="lines", name="BS価格",
-        line=dict(color="#1f77b4", width=2),
-    ))
-    fig.add_vline(x=S0, line_dash="dash", line_color="red",
-                  annotation_text=f"現在株価 {S0:.1f}")
-    fig.add_vline(x=K,  line_dash="dot",  line_color="gray",
-                  annotation_text=f"行使価格 {K:.1f}")
-    fig.update_layout(
-        title="株価感応度 (BS価格)",
-        xaxis_title="株価 (S)",
-        yaxis_title="オプション価格",
-        height=380,
-        margin=dict(l=40, r=20, t=50, b=40),
-    )
-    return fig
-
-
-def _show_bs_detail(detail: dict) -> None:
-    """BS計算プロセス詳細の表示"""
-    st.markdown("#### 📐 Black-Scholes 計算プロセス")
-
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.markdown("**中間変数**")
-        st.latex(r"d_1 = \frac{\ln(S/K) + (r - q + \frac{\sigma^2}{2})T}{\sigma\sqrt{T}}")
-        st.code(
-            f"ln(S/K)      = {_fmt(detail.get('log_SK'))}\n"
-            f"σ√T          = {_fmt(detail.get('sigma_sqrtT'))}\n"
-            f"d₁           = {_fmt(detail.get('d1'))}\n"
-            f"d₂           = {_fmt(detail.get('d2'))}",
-            language=None,
-        )
-    with col2:
-        st.markdown("**正規分布値**")
-        st.code(
-            f"N(d₁)        = {_fmt(detail.get('Nd1'))}\n"
-            f"N(d₂)        = {_fmt(detail.get('Nd2'))}\n"
-            f"N(-d₁)       = {_fmt(detail.get('Nnd1'))}\n"
-            f"N(-d₂)       = {_fmt(detail.get('Nnd2'))}\n"
-            f"n(d₁)        = {_fmt(detail.get('nd1'))}",
-            language=None,
-        )
-    with col3:
-        st.markdown("**割引因子**")
-        st.code(
-            f"e^(-qT)      = {_fmt(detail.get('exp_qT'))}\n"
-            f"e^(-rT)      = {_fmt(detail.get('exp_rT'))}",
-            language=None,
-        )
-
-    st.markdown("**Greeks（BSモデル）**")
-    gc1, gc2, gc3, gc4, gc5 = st.columns(5)
-    gc1.metric("Delta", _fmt(detail.get("delta")))
-    gc2.metric("Gamma", _fmt(detail.get("gamma")))
-    gc3.metric("Theta", _fmt(detail.get("theta")))
-    gc4.metric("Vega",  _fmt(detail.get("vega")))
-    gc5.metric("Rho",   _fmt(detail.get("rho")))
-
-
-def _show_binomial_detail(detail: dict) -> None:
-    """二項モデル計算プロセス詳細の表示"""
-    st.markdown("#### 🌳 二項モデル 計算プロセス")
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("**ツリーパラメータ**")
-        st.code(
-            f"ステップ数 N  = {detail.get('steps', 'N/A')}\n"
-            f"dt           = {_fmt(detail.get('dt'))}\n"
-            f"上昇率 u     = {_fmt(detail.get('u'))}\n"
-            f"下落率 d     = {_fmt(detail.get('d'))}\n"
-            f"上昇確率 p↑  = {_fmt(detail.get('p_up'))}\n"
-            f"下落確率 p↓  = {_fmt(detail.get('p_down'))}\n"
-            f"割引因子     = {_fmt(detail.get('discount'))}",
-            language=None,
-        )
-    with col2:
-        st.markdown("**最終ノード（サンプル）**")
-        prices  = detail.get("terminal_prices_sample", [])
-        payoffs = detail.get("terminal_payoffs_sample", [])
-        if prices:
-            rows = []
-            for pr, pa in zip(prices, payoffs):
-                if pr == "...":
-                    rows.append({"株価": "...", "ペイオフ": "..."})
-                else:
-                    rows.append({
-                        "株価":    f"{float(pr):.2f}",
-                        "ペイオフ": f"{float(pa):.2f}",
-                    })
-            st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
-
-    col3, col4, col5 = st.columns(3)
-    col3.metric("最大株価（満期）", _fmt(detail.get("max_terminal_price"), ".2f"))
-    col4.metric("最小株価（満期）", _fmt(detail.get("min_terminal_price"), ".2f"))
-    col5.metric("ITMノード数",     str(detail.get("n_itm", "N/A")))
-
-
-def _show_mc_detail(detail: dict) -> None:
-    """モンテカルロ計算プロセス詳細の表示"""
-    st.markdown("#### 🎲 モンテカルロ 計算プロセス")
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("**シミュレーション統計**")
-        st.code(
-            f"シミュレーション数 = {detail.get('n_simulations', 'N/A')}\n"
-            f"ST 平均           = {_fmt(detail.get('mean_ST'), '.4f')}\n"
-            f"ST 標準偏差       = {_fmt(detail.get('std_ST'), '.4f')}\n"
-            f"ST 最小           = {_fmt(detail.get('min_ST'), '.4f')}\n"
-            f"ST 最大           = {_fmt(detail.get('max_ST'), '.4f')}\n"
-            f"ITM本数           = {detail.get('n_itm', 'N/A')}\n"
-            f"ITM比率           = {_fmt(detail.get('itm_ratio'), '.4f')}",
-            language=None,
-        )
-    with col2:
-        st.markdown("**価格推定**")
-        st.code(
-            f"平均ペイオフ       = {_fmt(detail.get('mean_payoff'), '.4f')}\n"
-            f"標準偏差           = {_fmt(detail.get('std_payoff'), '.4f')}\n"
-            f"標準誤差 (SE)      = {_fmt(detail.get('std_error'), '.6f')}\n"
-            f"割引因子           = {_fmt(detail.get('discount_factor'))}\n"
-            f"95%CI 下限         = {_fmt(detail.get('ci95_lower'), '.4f')}\n"
-            f"95%CI 上限         = {_fmt(detail.get('ci95_upper'), '.4f')}",
-            language=None,
-        )
-
-    # 株価分布ヒストグラム
-    st_hist = detail.get("ST_hist")
-    if st_hist:
-        st.markdown("**最終株価分布（サンプル2000件）**")
-        fig = go.Figure()
-        fig.add_trace(go.Histogram(
-            x=st_hist,
-            nbinsx=50,
-            marker_color="#1f77b4",
-            opacity=0.7,
-            name="最終株価",
-        ))
-        fig.add_vline(
-            x=float(detail.get("mean_ST", 0)),
-            line_dash="dash", line_color="red",
-            annotation_text="平均",
-        )
-        fig.update_layout(
-            title="モンテカルロ 最終株価分布",
-            xaxis_title="最終株価 ST",
-            yaxis_title="頻度",
-            height=300,
-            margin=dict(l=40, r=20, t=50, b=40),
-        )
-        st.plotly_chart(fig, use_container_width=True)
-
-
-# ════════════════════════════════════════════════════════
-# Ticker 編集 UI
-# ════════════════════════════════════════════════════════
-def _ticker_editor(case_id: int) -> None:
-    """類似会社Tickerの追加・削除・再取得UI"""
-    st.markdown("### 📡 類似会社Ticker（ボラティリティ参照）")
-
-    comparables = _svc.get_comparable_tickers(case_id)
-
-    if comparables:
-        st.markdown("**現在登録済みのTicker**")
-        for comp in comparables:
-            col_tick, col_vol, col_status, col_del = st.columns([2, 2, 3, 1])
-            with col_tick:
-                st.write(f"`{comp['ticker']}`")
-                if comp.get("company_label"):
-                    st.caption(comp["company_label"])
-            with col_vol:
-                vol = comp.get("volatility")
-                st.write(f"{vol:.4f}" if vol is not None else "未取得")
-            with col_status:
-                if comp.get("fetch_ok"):
-                    st.success("✅ 取得成功", icon="✅")
-                else:
-                    st.error(f"❌ {comp.get('error_msg','取得失敗')}")
-            with col_del:
-                if st.button(
-                    "🗑️",
-                    key=f"del_ticker_{case_id}_{comp['ticker']}",
-                    help=f"{comp['ticker']} を削除",
-                ):
-                    _svc.delete_comparable_ticker(case_id, comp["ticker"])
-                    st.success(f"{comp['ticker']} を削除しました。")
-                    st.rerun()
-        st.divider()
-    else:
-        st.info("類似会社Tickerが登録されていません。")
-        st.divider()
-
-    st.markdown("**Tickerを追加する**")
-    with st.form(key=f"add_ticker_form_{case_id}", clear_on_submit=True):
-        col_a, col_b, col_c = st.columns([2, 2, 1])
-        with col_a:
-            new_ticker = st.text_input(
-                "Tickerシンボル",
-                placeholder="例: 7203.T",
-                help="Yahoo Finance形式で入力（日本株は末尾に .T）",
-            )
-        with col_b:
-            label = st.text_input("会社名（任意）", placeholder="例: トヨタ自動車")
-        with col_c:
-            period = st.selectbox("取得期間", ["1y", "2y", "3y", "6mo"], index=0)
-        add_submitted = st.form_submit_button(
-            "➕ 追加・取得", type="primary", use_container_width=True
-        )
-
-    if add_submitted:
-        ticker_str = new_ticker.strip().upper()
-        if not ticker_str:
-            st.warning("Tickerシンボルを入力してください。")
-        else:
-            with st.spinner(f"{ticker_str} のデータを取得中..."):
-                try:
-                    result = _svc.add_comparable_ticker(
-                        case_id=case_id,
-                        ticker=ticker_str,
-                        company_label=label.strip(),
-                        vol_period=period,
-                    )
-                    if result.get("fetch_ok"):
-                        st.success(
-                            f"✅ {ticker_str} を追加しました。"
-                            f"ボラティリティ: {result['volatility']:.4f}"
-                        )
-                    else:
-                        st.error(f"❌ 取得失敗: {result.get('error_msg','不明なエラー')}")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"エラー: {e}")
-
-    if comparables:
-        st.divider()
-        if st.button(
-            "🔄 全Tickerを一括再取得",
-            key=f"refetch_all_{case_id}",
-            use_container_width=True,
-        ):
-            with st.spinner("全Tickerのデータを再取得中..."):
-                try:
-                    results = _svc.refetch_all_tickers(case_id)
-                    ok  = sum(1 for r in results if r.get("fetch_ok"))
-                    ng  = len(results) - ok
-                    st.success(f"再取得完了: 成功 {ok} 件 / 失敗 {ng} 件")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"エラー: {e}")
-
-
-# ════════════════════════════════════════════════════════
-# メイン show()
-# ════════════════════════════════════════════════════════
-def show() -> None:
-    case_id = st.session_state.get("detail_case_id")
-    if case_id is None:
-        st.warning("ケースが選択されていません。")
-        if st.button("← ケース一覧へ"):
-            st.session_state["current_page"] = "case_list"
-            st.rerun()
-        return
-
-    case = _svc.get_case(case_id)
-    if case is None:
-        st.error(f"ケース ID={case_id} が見つかりません。")
-        if st.button("← ケース一覧へ"):
-            st.session_state["current_page"] = "case_list"
-            st.rerun()
-        return
-
-    # ── 詳細画面でパラメータから再計算（計算プロセス詳細を復元） ──
-    cache_key = f"calc_result_{case_id}_{case.get('updated_at', '')}"
-    if cache_key not in st.session_state:
-        params = ValuationParams(
-            case_name      = str(case["case_name"]),
-            stock_price    = float(case["stock_price"]),
-            strike_price   = float(case["strike_price"]),
-            risk_free_rate = float(case["risk_free_rate"]),
-            volatility     = float(case["volatility"]),
-            time_to_expiry = float(case["time_to_expiry"]),
-            option_type    = str(case.get("option_type", "call")),
-            dividend_yield = float(case.get("dividend_yield") or 0.0),
-            binomial_steps = int(case.get("binomial_steps") or 100),
-            mc_simulations = int(case.get("mc_simulations") or 10000),
-        )
-        result = _svc.calculate(params)
-        st.session_state[cache_key] = result
-
-    result = st.session_state[cache_key]
-
-    # ── ヘッダー ──────────────────────────────
-    col_back, col_title = st.columns([1, 8])
-    with col_back:
-        if st.button("← 一覧"):
-            st.session_state["current_page"] = "case_list"
-            st.rerun()
-    with col_title:
-        st.title(f"📋 {case['case_name']}")
-
-    created = case.get("created_at", "")
-    updated = case.get("updated_at", "")
-    st.caption(f"作成: {created}　最終更新: {updated}")
-
-    # ── タブ構成 ──────────────────────────────
-    tab_view, tab_edit, tab_chart = st.tabs(
-        ["📊 結果・計算プロセス", "✏️ 編集・再計算", "📈 感応度分析"]
-    )
-
-    # ════════════════════════════════════════
-    # TAB 1: 結果 ＋ 計算プロセス詳細
-    # ════════════════════════════════════════
-    with tab_view:
-
-        # ── オプション価格 ────────────────────
-        st.markdown("### 💰 オプション価格")
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("⭐ 加重平均価格", _fmt(case.get("weighted_price"), ".2f"))
-        c2.metric("BS価格",         _fmt(case.get("bs_price"),        ".2f"))
-        c3.metric("二項モデル価格", _fmt(case.get("binomial_price"),  ".2f"))
-        c4.metric("MC価格",         _fmt(case.get("mc_price"),        ".2f"))
-        st.caption("加重: BS×0.5 ＋ 二項×0.3 ＋ MC×0.2")
-
-        # ── Greeks ───────────────────────────
-        st.markdown("### 🔢 Greeks（BS基準）")
-        g1, g2, g3, g4, g5 = st.columns(5)
-        g1.metric("Delta", _fmt(case.get("delta")))
-        g2.metric("Gamma", _fmt(case.get("gamma")))
-        g3.metric("Theta", _fmt(case.get("theta")))
-        g4.metric("Vega",  _fmt(case.get("vega")))
-        g5.metric("Rho",   _fmt(case.get("rho")))
-
-        # ── 計算パラメータ ────────────────────
-        st.markdown("### ⚙️ 計算パラメータ")
-        p1, p2 = st.columns(2)
-        with p1:
-            st.write(f"- 現在株価:     **{_fmt(case.get('stock_price'), '.2f')}**")
-            st.write(f"- 行使価格:     **{_fmt(case.get('strike_price'), '.2f')}**")
-            st.write(f"- 無リスク金利: **{_fmt(case.get('risk_free_rate'), '.4f')}**")
-            st.write(f"- ボラティリティ: **{_fmt(case.get('volatility'), '.4f')}**")
-        with p2:
-            st.write(f"- 満期（年）:   **{_fmt(case.get('time_to_expiry'), '.4f')}**")
-            st.write(f"- 配当利回り:   **{_fmt(case.get('dividend_yield'), '.4f')}**")
-            st.write(f"- オプション種類: **{case.get('option_type', 'call')}**")
-            st.write(f"- 二項ステップ: **{case.get('binomial_steps', 100)}**")
-            st.write(f"- MC試行数:     **{case.get('mc_simulations', 10000):,}**")
-
-        # ── 類似会社Ticker ────────────────────
-        comparables = _svc.get_comparable_tickers(case_id)
-        if comparables:
-            st.markdown("### 📡 類似会社ボラティリティ")
-            df = pd.DataFrame([{
-                "ティッカー":     c["ticker"],
-                "会社名":         c.get("company_label", ""),
-                "ボラティリティ": f"{c.get('volatility', 0):.4f}",
-                "期間":           c.get("vol_period", ""),
-                "状態":           "✅" if c.get("fetch_ok") else f"❌ {c.get('error_msg','')}",
-            } for c in comparables])
-            st.dataframe(df, use_container_width=True, hide_index=True)
-
-        st.divider()
-
-        # ════════════════════════════════════
-        # 計算プロセス詳細（アコーディオン）
-        # ════════════════════════════════════
-        st.markdown("### 🔍 計算プロセス詳細")
-
-        with st.expander("📐 Black-Scholes モデル（クリックで展開）", expanded=False):
-            if result.bs_detail:
-                _show_bs_detail(result.bs_detail)
-            else:
-                st.info("BS計算詳細がありません。")
-
-        with st.expander("🌳 二項モデル（クリックで展開）", expanded=False):
-            if result.bin_detail:
-                _show_binomial_detail(result.bin_detail)
-            else:
-                st.info("二項モデル詳細がありません。")
-
-        with st.expander("🎲 モンテカルロ シミュレーション（クリックで展開）", expanded=False):
-            if result.mc_detail:
-                _show_mc_detail(result.mc_detail)
-            else:
-                st.info("MC詳細がありません。")
-
-    # ════════════════════════════════════════
-    # TAB 2: 編集・再計算
-    # ════════════════════════════════════════
-    with tab_edit:
-        st.markdown("### パラメータを変更して再計算")
-        with st.form("edit_form"):
-            case_name = st.text_input("ケース名", value=case["case_name"])
-            col1, col2 = st.columns(2)
-            with col1:
-                S     = st.number_input("現在株価 (S)",   value=float(case["stock_price"]),    step=1.0)
-                K     = st.number_input("行使価格 (K)",   value=float(case["strike_price"]),   step=1.0)
-                T     = st.number_input("満期（年）(T)",  value=float(case["time_to_expiry"]), step=0.1,  format="%.4f")
-                otype = st.selectbox(
-                    "オプション種類", ["call", "put"],
-                    index=0 if case.get("option_type", "call") == "call" else 1,
-                )
-            with col2:
-                r     = st.number_input("無リスク金利 (r)",   value=float(case["risk_free_rate"]), step=0.001, format="%.4f")
-                sigma = st.number_input("ボラティリティ (σ)", value=float(case["volatility"]),     step=0.01,  format="%.4f")
-                q     = st.number_input("配当利回り (q)",
-                                        value=float(case.get("dividend_yield") or 0.0),
-                                        step=0.001, format="%.4f")
-                steps = st.number_input("二項ステップ数", value=int(case.get("binomial_steps") or 100),
-                                        min_value=10, max_value=1000, step=10)
-                mc_n  = st.number_input("MCシミュレーション数",
-                                        value=int(case.get("mc_simulations") or 10000),
-                                        min_value=1000, max_value=100000, step=1000)
-            submitted = st.form_submit_button("💾 保存して再計算", type="primary")
-
-        if submitted:
+def _fetch_vol(ticker: str, period: str = "1y") -> ComparableTickerRow:
+    wait_times = [5, 15, 30]
+    for attempt, wait in enumerate(wait_times):
+        try:
+            pre_delay = 2.0 + random.uniform(0.5, 2.0)
+            time.sleep(pre_delay)
+            t_obj = yf.Ticker(ticker)
+            info = {}
             try:
-                params = ValuationParams(
-                    case_name=case_name, stock_price=S, strike_price=K,
-                    risk_free_rate=r, volatility=sigma, time_to_expiry=T,
-                    option_type=otype, dividend_yield=q,
-                    binomial_steps=int(steps),
-                    mc_simulations=int(mc_n),
+                time.sleep(1.5)
+                info = t_obj.info or {}
+            except Exception:
+                info = {}
+            hist = t_obj.history(period=period)
+            if hist.empty:
+                return ComparableTickerRow(
+                    ticker=ticker,
+                    name=info.get("shortName", ticker),
+                    volatility=None,
+                    current_price=None,
+                    error="No price data"
                 )
-                _svc.update_case(case_id, params)
-                # キャッシュ削除（再計算を促す）
-                for key in list(st.session_state.keys()):
-                    if key.startswith(f"calc_result_{case_id}_"):
-                        del st.session_state[key]
-                st.success("✅ 再計算・保存しました。「結果」タブで確認できます。")
+            closes = hist["Close"].dropna()
+            log_returns = np.log(closes / closes.shift(1)).dropna()
+            annual_vol = float(log_returns.std() * np.sqrt(252))
+            current_price = float(closes.iloc[-1])
+            name = info.get("shortName", ticker)
+            return ComparableTickerRow(
+                ticker=ticker,
+                name=name,
+                volatility=annual_vol,
+                current_price=current_price,
+                error=None
+            )
+        except Exception as e:
+            err_msg = str(e).lower()
+            is_rate_limit = any(x in err_msg for x in ["too many requests", "429", "rate limit", "throttl"])
+            if attempt < len(wait_times) - 1:
+                if is_rate_limit:
+                    actual_wait = wait + random.uniform(0, 5)
+                    st.warning(f"Rate limited [{ticker}]. Waiting {actual_wait:.0f}s (attempt {attempt+1}/{len(wait_times)})...")
+                    time.sleep(actual_wait)
+                else:
+                    time.sleep(3)
+                continue
+            error_type = "Rate limited" if is_rate_limit else str(e)[:50]
+            return ComparableTickerRow(
+                ticker=ticker,
+                name=ticker,
+                volatility=None,
+                current_price=None,
+                error=error_type
+            )
+    return ComparableTickerRow(ticker=ticker, name=ticker, volatility=None, current_price=None, error="Max retries exceeded")
+
+def fetch_comparables(tickers: list, period: str = "1y") -> list:
+    results = []
+    total = len(tickers)
+    st.info(f"Fetching {total} ticker(s). Requests spaced 4-8s apart.")
+    progress = st.progress(0)
+    status = st.empty()
+    for i, ticker in enumerate(tickers):
+        status.text(f"Fetching {ticker} ({i+1}/{total})...")
+        if i > 0:
+            inter_delay = 4.0 + random.uniform(0, 4)
+            time.sleep(inter_delay)
+        row = _fetch_vol(ticker, period)
+        results.append(row)
+        progress.progress((i + 1) / total)
+    status.text("Fetch complete.")
+    return results
+
+def bs_price(S, K, T, r, sigma, option_type="call"):
+    if T <= 0:
+        return max(S - K, 0.0) if option_type == "call" else max(K - S, 0.0)
+    d1 = (np.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
+    d2 = d1 - sigma * np.sqrt(T)
+    if option_type == "call":
+        return S * norm.cdf(d1) - K * np.exp(-r * T) * norm.cdf(d2)
+    return K * np.exp(-r * T) * norm.cdf(-d2) - S * norm.cdf(-d1)
+
+def bs_greeks(S, K, T, r, sigma, option_type="call"):
+    if T <= 0:
+        return {"delta": float("nan"), "gamma": float("nan"), "theta": float("nan"), "vega": float("nan"), "rho": float("nan")}
+    d1 = (np.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
+    d2 = d1 - sigma * np.sqrt(T)
+    pdf_d1 = norm.pdf(d1)
+    gamma = pdf_d1 / (S * sigma * np.sqrt(T))
+    vega = S * pdf_d1 * np.sqrt(T) / 100
+    if option_type == "call":
+        delta = norm.cdf(d1)
+        theta = (-(S * pdf_d1 * sigma) / (2 * np.sqrt(T)) - r * K * np.exp(-r * T) * norm.cdf(d2)) / 365
+        rho = K * T * np.exp(-r * T) * norm.cdf(d2) / 100
+    else:
+        delta = norm.cdf(d1) - 1
+        theta = (-(S * pdf_d1 * sigma) / (2 * np.sqrt(T)) + r * K * np.exp(-r * T) * norm.cdf(-d2)) / 365
+        rho = -K * T * np.exp(-r * T) * norm.cdf(-d2) / 100
+    return {"delta": delta, "gamma": gamma, "theta": theta, "vega": vega, "rho": rho}
+
+def binomial_price(S, K, T, r, sigma, option_type="call", steps=5):
+    dt = T / steps
+    u = np.exp(sigma * np.sqrt(dt))
+    d = 1 / u
+    p = (np.exp(r * dt) - d) / (u - d)
+    prices = np.zeros((steps + 1, steps + 1))
+    for i in range(steps + 1):
+        for j in range(i + 1):
+            prices[j, i] = S * (u ** (i - j)) * (d ** j)
+    values = np.zeros((steps + 1, steps + 1))
+    for j in range(steps + 1):
+        if option_type == "call":
+            values[j, steps] = max(prices[j, steps] - K, 0)
+        else:
+            values[j, steps] = max(K - prices[j, steps], 0)
+    for i in range(steps - 1, -1, -1):
+        for j in range(i + 1):
+            values[j, i] = np.exp(-r * dt) * (p * values[j, i + 1] + (1 - p) * values[j + 1, i + 1])
+    return prices, values
+
+def monte_carlo_price(S, K, T, r, sigma, option_type="call", n_sim=10000):
+    np.random.seed(42)
+    Z = np.random.standard_normal(n_sim)
+    ST = S * np.exp((r - 0.5 * sigma**2) * T + sigma * np.sqrt(T) * Z)
+    if option_type == "call":
+        payoffs = np.maximum(ST - K, 0)
+    else:
+        payoffs = np.maximum(K - ST, 0)
+    price = np.exp(-r * T) * np.mean(payoffs)
+    return price, ST, payoffs
+
+def show():
+    from src.data.database import get_session
+    from src.data.repository import ValuationCaseRepository
+
+    case_id = st.session_state.get('detail_case_id')
+    if not case_id:
+        st.warning('ケースが選択されていません。')
+        if st.button('ケース一覧に戻る'):
+            st.session_state['current_page'] = 'case_list'
+            st.rerun()
+        return
+
+    with get_session() as session:
+        repo = ValuationCaseRepository(session)
+        case_obj = repo.get_by_id(case_id)
+        if not case_obj:
+            st.error(f'ケースID {case_id} が見つかりません。')
+            return
+        case = {
+            'id':             case_obj.id,
+            'name':           case_obj.case_name,
+            'stock_price':    case_obj.stock_price,
+            'strike_price':   case_obj.strike_price,
+            'time_to_expiry': case_obj.time_to_expiry,
+            'risk_free_rate': case_obj.risk_free_rate,
+            'volatility':     case_obj.volatility,
+            'option_type':    case_obj.option_type,
+            'dividend_yield': case_obj.dividend_yield,
+            'binomial_steps': case_obj.binomial_steps,
+            'mc_simulations': case_obj.mc_simulations,
+            'bs_price':       case_obj.bs_price,
+            'binomial_price': case_obj.binomial_price,
+            'mc_price':       case_obj.mc_price,
+            'weighted_price': case_obj.weighted_price,
+        }
+    st.title(f"Case Detail: {case.get('name', 'Unnamed')}")
+    with st.expander("Parameters", expanded=True):
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            S = st.number_input("Stock Price (S)", value=float(case.get("stock_price", 100)), min_value=0.01)
+            K = st.number_input("Strike Price (K)", value=float(case.get("strike_price", 100)), min_value=0.01)
+        with col2:
+            T = st.number_input("Time to Expiry (T, years)", value=float(case.get("time_to_expiry", 1.0)), min_value=0.01)
+            r = st.number_input("Risk-free Rate (r)", value=float(case.get("risk_free_rate", 0.05)), min_value=0.0, max_value=1.0, step=0.001, format="%.3f")
+        with col3:
+            sigma = st.number_input("Volatility (sigma)", value=float(case.get("volatility", 0.2)), min_value=0.001, max_value=5.0, step=0.01, format="%.3f")
+            option_type = st.selectbox("Option Type", ["call", "put"], index=0 if case.get("option_type", "call") == "call" else 1)
+    tab1, tab2, tab3 = st.tabs(["Black-Scholes", "Binomial Model", "Monte Carlo"])
+    with tab1:
+        st.subheader("Black-Scholes Price")
+        price_bs = bs_price(S, K, T, r, sigma, option_type)
+        st.metric("Option Price", f"{price_bs:.4f}")
+        st.latex(r"C = S \cdot N(d_1) - K e^{-rT} \cdot N(d_2)")
+        st.latex(r"d_1 = \frac{\ln(S/K) + (r + \frac{\sigma^2}{2})T}{\sigma\sqrt{T}}, \quad d_2 = d_1 - \sigma\sqrt{T}")
+        st.subheader("Greeks")
+        greeks = bs_greeks(S, K, T, r, sigma, option_type)
+        g1, g2, g3, g4, g5 = st.columns(5)
+        g1.metric("Delta", f"{greeks['delta']:.4f}")
+        g2.metric("Gamma", f"{greeks['gamma']:.4f}")
+        g3.metric("Theta", f"{greeks['theta']:.4f}")
+        g4.metric("Vega", f"{greeks['vega']:.4f}")
+        g5.metric("Rho", f"{greeks['rho']:.4f}")
+    with tab2:
+        st.subheader("Binomial Model (5-step)")
+        prices, values = binomial_price(S, K, T, r, sigma, option_type, steps=5)
+        st.write("**Stock Price Tree**")
+        price_df = pd.DataFrame(prices, index=[f"d^{i}" for i in range(6)], columns=[f"Step {i}" for i in range(6)])
+        st.dataframe(price_df.style.format("{:.2f}"))
+        st.write("**Option Value Tree**")
+        value_df = pd.DataFrame(values, index=[f"d^{i}" for i in range(6)], columns=[f"Step {i}" for i in range(6)])
+        st.dataframe(value_df.style.format("{:.4f}"))
+        st.metric("Binomial Price", f"{values[0, 0]:.4f}")
+    with tab3:
+        st.subheader("Monte Carlo Simulation")
+        n_sim = st.slider("Simulations", 1000, 50000, 10000, 1000)
+        price_mc, ST, payoffs = monte_carlo_price(S, K, T, r, sigma, option_type, n_sim)
+        st.metric("Monte Carlo Price", f"{price_mc:.4f}")
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
+        ax1.hist(ST, bins=50, color="steelblue", alpha=0.7, edgecolor="white")
+        ax1.axvline(K, color="red", linestyle="--", label=f"K={K}")
+        ax1.set_title("Terminal Stock Price Distribution")
+        ax1.set_xlabel("Price")
+        ax1.set_ylabel("Frequency")
+        ax1.legend()
+        ax2.hist(payoffs, bins=50, color="green", alpha=0.7, edgecolor="white")
+        ax2.axvline(float(np.mean(payoffs)), color="orange", linestyle="--", label=f"Mean={np.mean(payoffs):.2f}")
+        ax2.set_title("Payoff Distribution")
+        ax2.set_xlabel("Payoff")
+        ax2.set_ylabel("Frequency")
+        ax2.legend()
+        st.pyplot(fig)
+        plt.close(fig)
+    st.divider()
+    st.subheader("Comparable Company Volatility")
+    ticker_input = st.text_input("Enter ticker symbols (comma-separated)", placeholder="Example: 7203.T, 9984.T, AAPL, MSFT")
+    period_sel = st.selectbox("Historical Period", ["6mo", "1y", "2y"], index=1)
+    col_fetch, col_clear = st.columns([1, 1])
+    with col_fetch:
+        fetch_btn = st.button("Fetch Volatility", type="primary")
+    with col_clear:
+        clear_btn = st.button("Clear Results")
+    if clear_btn:
+        st.session_state.pop("comparable_results", None)
+        st.rerun()
+    if fetch_btn and ticker_input.strip():
+        tickers = [t.strip().upper() for t in ticker_input.split(",") if t.strip()]
+        with st.spinner("Fetching data..."):
+            results = fetch_comparables(tickers, period_sel)
+        st.session_state["comparable_results"] = results
+    if "comparable_results" in st.session_state:
+        results = st.session_state["comparable_results"]
+        rows = []
+        for r_row in results:
+            rows.append({
+                "Ticker": r_row.ticker,
+                "Name": r_row.name,
+                "Volatility": f"{r_row.volatility:.1%}" if r_row.volatility else "N/A",
+                "Current Price": f"{r_row.current_price:.2f}" if r_row.current_price else "N/A",
+                "Status": "OK" if not r_row.error else f"ERROR: {r_row.error}"
+            })
+        df = pd.DataFrame(rows)
+        st.dataframe(df, use_container_width=True)
+        vols = [r_row.volatility for r_row in results if r_row.volatility]
+        if vols:
+            st.subheader("Summary Statistics")
+            s1, s2, s3, s4 = st.columns(4)
+            s1.metric("Mean Vol", f"{np.mean(vols):.1%}")
+            s2.metric("Median Vol", f"{np.median(vols):.1%}")
+            s3.metric("Min Vol", f"{np.min(vols):.1%}")
+            s4.metric("Max Vol", f"{np.max(vols):.1%}")
+            avg_vol = np.mean(vols)
+            if st.button('Apply Average Volatility to Case', type='primary'):
+                with get_session() as session:
+                    from src.data.repository import ValuationCaseRepository
+                    repo = ValuationCaseRepository(session)
+                    repo.update(case_id, {'volatility': avg_vol})
+                st.session_state['vol_applied'] = avg_vol
+                st.success(f'Volatility updated to {avg_vol:.1%}')
                 st.rerun()
-            except Exception as e:
-                st.error(f"エラー: {e}")
+    if st.session_state.get('vol_applied'):
+        st.info(f'Applied volatility: {st.session_state["vol_applied"]:.1%}')
 
-        st.divider()
-        _ticker_editor(case_id)
-        st.divider()
-
-        # ── ケース削除 ────────────────────────
-        st.markdown("### ⚠️ ケース削除")
-        if st.button("🗑️ このケースを削除", type="secondary"):
-            st.session_state["confirm_delete"] = True
-
-        if st.session_state.get("confirm_delete"):
-            st.warning(f"「{case['case_name']}」を削除しますか？この操作は元に戻せません。")
-            col_yes, col_no = st.columns(2)
-            with col_yes:
-                if st.button("はい、削除します", type="primary"):
-                    _svc.delete_case(case_id)
-                    # キャッシュ削除
-                    for key in list(st.session_state.keys()):
-                        if key.startswith(f"calc_result_{case_id}_"):
-                            del st.session_state[key]
-                    st.session_state.pop("detail_case_id", None)
-                    st.session_state.pop("confirm_delete", None)
-                    st.session_state["current_page"] = "case_list"
-                    st.rerun()
-            with col_no:
-                if st.button("キャンセル"):
-                    st.session_state.pop("confirm_delete", None)
-                    st.rerun()
-
-    # ════════════════════════════════════════
-    # TAB 3: 感応度分析
-    # ════════════════════════════════════════
-    with tab_chart:
-        st.markdown("### 株価 vs オプション価格（BS）")
-        st.caption("現在のパラメータで株価を±50%変動させた場合の感応度")
-        with st.spinner("チャート生成中..."):
-            fig = _sensitivity_chart(case)
-        st.plotly_chart(fig, use_container_width=True)
-
-
-def render() -> None:
-    show()
+    st.divider()
+    col_save, col_back = st.columns([1, 1])
+    with col_save:
+        if st.button('Save Results to DB', type='primary'):
+            price_bs_val = bs_price(S, K, T, r, sigma, option_type)
+            greeks_val   = bs_greeks(S, K, T, r, sigma, option_type)
+            _, vals      = binomial_price(S, K, T, r, sigma, option_type, steps=5)
+            price_binom  = float(vals[0, 0])
+            price_mc_val, _, _ = monte_carlo_price(S, K, T, r, sigma, option_type, 10000)
+            weighted     = round((price_bs_val + price_binom + price_mc_val) / 3, 6)
+            update_data  = {
+                'stock_price':    S,
+                'strike_price':   K,
+                'time_to_expiry': T,
+                'risk_free_rate': r,
+                'volatility':     sigma,
+                'option_type':    option_type,
+                'bs_price':       round(price_bs_val, 6),
+                'binomial_price': price_binom,
+                'mc_price':       round(price_mc_val, 6),
+                'weighted_price': weighted,
+                'delta':          greeks_val['delta'],
+                'gamma':          greeks_val['gamma'],
+                'theta':          greeks_val['theta'],
+                'vega':           greeks_val['vega'],
+                'rho':            greeks_val['rho'],
+            }
+            with get_session() as session:
+                from src.data.repository import ValuationCaseRepository
+                repo = ValuationCaseRepository(session)
+                repo.update(case_id, update_data)
+            st.success('Results saved to database.')
+    with col_back:
+        if st.button('Back to Case List'):
+            st.session_state['current_page'] = 'case_list'
+            st.rerun()
