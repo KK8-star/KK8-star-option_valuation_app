@@ -1,4 +1,5 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
+# src/ui/pages/home.py
 from __future__ import annotations
 
 import streamlit as st
@@ -8,20 +9,16 @@ from src.data.models import ValuationCase
 
 
 def show() -> None:
-
-    # ── ロゴ（ページ上部中央） ─────────────────────────────────────────
     logo_path = Path("assets/logo.png")
     if logo_path.exists():
         col_l, col_c, col_r = st.columns([1, 2, 1])
         with col_c:
             st.image(str(logo_path), use_container_width=True)
-        st.markdown("")          # 余白
-    # ─────────────────────────────────────────────────────────────────
+        st.markdown("")
 
     st.title("ホーム")
     st.markdown("### 直近の評価結果（最新3件）")
 
-    # DBから直接取得
     try:
         db = DatabaseManager()
         with db.get_session() as session:
@@ -32,28 +29,47 @@ def show() -> None:
                 .limit(3)
                 .all()
             )
+            cases_data = []
+            for c in cases:
+                cases_data.append({
+                    "id":             c.id,
+                    "case_name":      c.case_name,
+                    "created_at":     c.created_at,
+                    "bs_price":       c.bs_price,
+                    "binomial_price": c.binomial_price,
+                    "mc_price":       c.mc_price,
+                    "weighted_price": c.weighted_price,
+                    "option_type":    c.option_type,
+                })
 
-            if not cases:
-                st.info("まだ計算済みのケースがありません。ケース一覧からケースを作成・計算してください。")
-            else:
-                for c in cases:
-                    with st.container():
-                        col1, col2, col3 = st.columns([3, 2, 2])
-                        with col1:
-                            st.markdown(f"**{c.case_name}**")
-                            st.caption(
-                                f"作成日時: {c.created_at.strftime('%Y-%m-%d %H:%M') if c.created_at else '不明'}"
-                            )
-                        with col2:
-                            st.metric("BS価格", f"{c.bs_price:.4f}")
-                        with col3:
-                            if c.mc_price is not None:
-                                st.caption(f"MC価格: {c.mc_price:.4f}")
-                            if st.button("詳細を見る", key=f"home_detail_{c.id}"):
-                                st.session_state["detail_case_id"] = c.id
-                                st.session_state["current_page"] = "case_detail"
-                                st.rerun()
-                        st.divider()
+        if not cases_data:
+            st.info("まだ計算済みのケースがありません。新規評価からケースを作成してください。")
+        else:
+            for c in cases_data:
+                with st.container():
+                    col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 2, 1])
+                    with col1:
+                        st.markdown(f"**{c['case_name']}**")
+                        created = c["created_at"]
+                        st.caption(
+                            f"作成日時: {created.strftime('%Y-%m-%d %H:%M') if created else '不明'}"
+                        )
+                        st.caption(f"種類: {c.get('option_type', '')}")
+                    with col2:
+                        bs = c["bs_price"]
+                        st.metric("BS価格", f"{bs:.4f}" if bs is not None else "N/A")
+                    with col3:
+                        binom = c["binomial_price"]
+                        st.metric("二項価格", f"{binom:.4f}" if binom is not None else "N/A")
+                    with col4:
+                        mc = c["mc_price"]
+                        st.metric("MC価格", f"{mc:.4f}" if mc is not None else "N/A")
+                    with col5:
+                        if st.button("詳細", key=f"home_detail_{c['id']}", type="primary"):
+                            st.session_state["detail_case_id"] = c["id"]
+                            st.session_state["current_page"] = "case_detail"
+                            st.rerun()
+                    st.divider()
 
     except Exception as e:
         st.error(f"データ取得エラー: {e}")
