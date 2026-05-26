@@ -50,8 +50,16 @@ def _fetch_vol_cached(ticker: str, period: str) -> dict:
 
         label = ticker
         try:
-            info  = tk_obj.info
-            label = info.get("shortName") or info.get("longName") or ticker
+            info = tk_obj.info
+            label = (
+                info.get("longName") or
+                info.get("shortName") or
+                info.get("displayName") or
+                info.get("name") or
+                ticker
+            )
+            if not label or label.strip() == "":
+                label = ticker
         except Exception:
             pass
 
